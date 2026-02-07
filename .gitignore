@@ -1,0 +1,35 @@
+# Environment
+.env
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Data (keep structure, ignore contents)
+data/scanned/*
+data/processed/*
+data/filed/*
+data/exports/*
+data/invoices/*
+data/backups/*
+!data/**/.gitkeep
+
+# Logs
+logs/*.log
+
+# Database
+*.db
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+desktop.ini
+Thumbs.db
+.DS_Store

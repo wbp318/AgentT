@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="stats-grid" hx-get="/api/stats" hx-trigger="every 30s" hx-swap="none">
+    <div class="stat-card">
+        <div class="label">Total Documents</div>
+        <div class="value">{{ stats.total_documents }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Filed</div>
+        <div class="value success">{{ stats.filed_documents }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Processing</div>
+        <div class="value warning">{{ stats.pending_documents }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Errors</div>
+        <div class="value danger">{{ stats.error_documents }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Pending Approvals</div>
+        <div class="value {% if stats.pending_approvals > 0 %}warning{% endif %}">{{ stats.pending_approvals }}</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Recent Documents</h2>
+    {% if recent_docs %}
+    <table>
+        <thead>
+            <tr>
+                <th>Filename</th>
+                <th>Type</th>
+                <th>Entity</th>
+                <th>Status</th>
+                <th>Scanned</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for doc in recent_docs %}
+            <tr>
+                <td><a href="/documents/{{ doc.id }}">{{ doc.original_filename }}</a></td>
+                <td>{{ doc.document_type.value if doc.document_type else "—" }}</td>
+                <td>{{ doc.entity.name if doc.entity else "—" }}</td>
+                <td>
+                    <span class="badge {% if doc.status.value == 'filed' %}filed{% elif doc.status.value == 'error' %}error{% elif doc.status.value == 'pending' %}pending{% else %}info{% endif %}">
+                        {{ doc.status.value }}
+                    </span>
+                </td>
+                <td>{{ doc.scanned_at.strftime('%Y-%m-%d %H:%M') if doc.scanned_at else "—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No documents yet. Drop a PDF in the scanner folder to get started.</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Entities</h2>
+    <table>
+        <thead>
+            <tr><th>Name</th><th>Type</th><th>State</th><th>Accounting</th></tr>
+        </thead>
+        <tbody>
+            {% for entity in entities %}
+            <tr>
+                <td>{{ entity.name }}</td>
+                <td>{{ entity.entity_type.value }}</td>
+                <td>{{ entity.state }}</td>
+                <td>{{ entity.accounting_method.value }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h2>Recent Activity</h2>
+    {% if recent_audit %}
+    <table>
+        <thead>
+            <tr><th>Time</th><th>Module</th><th>Action</th><th>Severity</th></tr>
+        </thead>
+        <tbody>
+            {% for entry in recent_audit %}
+            <tr>
+                <td>{{ entry.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td>{{ entry.module }}</td>
+                <td>{{ entry.action }}</td>
+                <td>
+                    <span class="badge {% if entry.severity.value == 'error' %}error{% elif entry.severity.value == 'warning' %}pending{% else %}info{% endif %}">
+                        {{ entry.severity.value }}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No activity yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

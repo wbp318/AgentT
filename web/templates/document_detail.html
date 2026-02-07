@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title_extra %} — {{ doc.original_filename }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>{{ doc.original_filename }}</h2>
+    <table>
+        <tr><th style="width:200px">Status</th><td>
+            <span class="badge {% if doc.status.value == 'filed' %}filed{% elif doc.status.value == 'error' %}error{% elif doc.status.value == 'pending' %}pending{% else %}info{% endif %}">
+                {{ doc.status.value }}
+            </span>
+        </td></tr>
+        <tr><th>Document Type</th><td>{{ doc.document_type.value if doc.document_type else "—" }}</td></tr>
+        <tr><th>Entity</th><td>{{ doc.entity.name if doc.entity else "Unassigned" }}</td></tr>
+        <tr><th>OCR Confidence</th><td>{{ "%.0f%%"|format(doc.ocr_confidence * 100) if doc.ocr_confidence else "—" }}</td></tr>
+        <tr><th>Classification Confidence</th><td>{{ "%.0f%%"|format(doc.classification_confidence * 100) if doc.classification_confidence else "—" }}</td></tr>
+        <tr><th>Scanned At</th><td>{{ doc.scanned_at.strftime('%Y-%m-%d %H:%M:%S') if doc.scanned_at else "—" }}</td></tr>
+        <tr><th>Processed At</th><td>{{ doc.processed_at.strftime('%Y-%m-%d %H:%M:%S') if doc.processed_at else "—" }}</td></tr>
+        <tr><th>Filed At</th><td>{{ doc.filed_at.strftime('%Y-%m-%d %H:%M:%S') if doc.filed_at else "—" }}</td></tr>
+        <tr><th>Filed To</th><td>{{ doc.stored_path or "—" }}</td></tr>
+        {% if doc.error_message %}
+        <tr><th>Error</th><td style="color: var(--danger);">{{ doc.error_message }}</td></tr>
+        {% endif %}
+    </table>
+</div>
+
+{% if doc.extracted_data %}
+<div class="card">
+    <h2>Extracted Data</h2>
+    <pre style="background: var(--bg); padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.85rem;">{{ doc.extracted_data | tojson(indent=2) }}</pre>
+</div>
+{% endif %}
+
+{% if doc.ocr_text %}
+<div class="card">
+    <h2>OCR Text</h2>
+    <pre style="background: var(--bg); padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.85rem; white-space: pre-wrap; max-height: 400px; overflow-y: auto;">{{ doc.ocr_text }}</pre>
+</div>
+{% endif %}
+{% endblock %}

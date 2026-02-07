@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title_extra %} — Audit Log{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Audit Log</h2>
+    {% if entries %}
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Module</th>
+                <th>Action</th>
+                <th>Detail</th>
+                <th>User</th>
+                <th>Severity</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in entries %}
+            <tr>
+                <td>{{ entry.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td>{{ entry.module }}</td>
+                <td>{{ entry.action }}</td>
+                <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    {{ entry.detail | tojson if entry.detail else "—" }}
+                </td>
+                <td>{{ entry.user }}</td>
+                <td>
+                    <span class="badge {% if entry.severity.value == 'error' %}error{% elif entry.severity.value == 'warning' %}pending{% else %}info{% endif %}">
+                        {{ entry.severity.value }}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No audit entries yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title_extra %} — Documents{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>All Documents</h2>
+    {% if documents %}
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Filename</th>
+                <th>Type</th>
+                <th>Entity</th>
+                <th>Confidence</th>
+                <th>Status</th>
+                <th>Scanned</th>
+                <th>Filed</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for doc in documents %}
+            <tr>
+                <td>{{ doc.id }}</td>
+                <td><a href="/documents/{{ doc.id }}">{{ doc.original_filename }}</a></td>
+                <td>{{ doc.document_type.value if doc.document_type else "—" }}</td>
+                <td>{{ doc.entity.name if doc.entity else "—" }}</td>
+                <td>{{ "%.0f%%"|format(doc.ocr_confidence * 100) if doc.ocr_confidence else "—" }}</td>
+                <td>
+                    <span class="badge {% if doc.status.value == 'filed' %}filed{% elif doc.status.value == 'error' %}error{% elif doc.status.value == 'pending' %}pending{% else %}info{% endif %}">
+                        {{ doc.status.value }}
+                    </span>
+                </td>
+                <td>{{ doc.scanned_at.strftime('%Y-%m-%d %H:%M') if doc.scanned_at else "—" }}</td>
+                <td>{{ doc.filed_at.strftime('%Y-%m-%d %H:%M') if doc.filed_at else "—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No documents yet.</p>
+    {% endif %}
+</div>
+{% endblock %}
