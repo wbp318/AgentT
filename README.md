@@ -76,7 +76,7 @@ See [docs/PLAN.md](docs/PLAN.md) for the full implementation plan.
 
 ## License
 
-Proprietary - All rights reserved. See [LICENSE](LICENSE)
+Proprietary software. All rights reserved. See [LICENSE](LICENSE) for full terms. No license is granted to copy, use, modify, or distribute this software.
 
 ## Contact
 
