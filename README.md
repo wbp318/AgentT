@@ -76,7 +76,7 @@ See [docs/PLAN.md](docs/PLAN.md) for the full implementation plan.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE)
+MIT License - feel free to use this for your farm!
 
 ## Contact
 
