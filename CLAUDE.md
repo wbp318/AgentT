@@ -225,5 +225,5 @@ WeasyPrint tests mock `sys.modules["weasyprint"]` to avoid GTK/Pango dependency 
 ## Planned Phases
 
 Phases 1-4 are complete. Upcoming:
-- **Phase 5**: FSA/USDA crop reporting module
+- **Phase 5**: FSA/USDA crop reporting module (deferred — research complete, implementation on hold)
 - **Phase 6**: Live QB sync via Conductor.is
