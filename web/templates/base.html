@@ -125,6 +125,67 @@
         a:hover { text-decoration: underline; }
 
         .empty { color: var(--text-muted); font-style: italic; padding: 2rem; text-align: center; }
+
+        .btn {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            color: var(--text);
+            background: var(--surface);
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .btn:hover { background: var(--border); text-decoration: none; }
+        .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-success { background: var(--success); border-color: var(--success); color: #fff; }
+        .btn-success:hover { background: #16a34a; }
+        .btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-sm { padding: 0.25rem 0.6rem; font-size: 0.75rem; }
+
+        .form-group { margin-bottom: 1rem; }
+        .form-group label {
+            display: block;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-bottom: 0.3rem;
+            font-weight: 600;
+        }
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .form-group textarea { resize: vertical; min-height: 60px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+        .badge.iif_generated { background: #1e3a5f20; color: var(--accent); border: 1px solid #1e3a5f50; }
+        .badge.synced { background: #16532820; color: var(--success); border: 1px solid #16532850; }
+        .badge.approved { background: #16532820; color: var(--success); border: 1px solid #16532850; }
+        .badge.rejected { background: #7f1d1d20; color: var(--danger); border: 1px solid #7f1d1d50; }
+
+        .actions { display: flex; gap: 0.5rem; align-items: center; }
+        .flash { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
+        .flash-success { background: #16532830; color: var(--success); border: 1px solid #16532850; }
+        .flash-error { background: #7f1d1d30; color: var(--danger); border: 1px solid #7f1d1d50; }
     </style>
 </head>
 <body>
@@ -132,7 +193,10 @@
         <h1><span>Agent</span>T</h1>
         <nav>
             <a href="/" {% if request.url.path == "/" %}class="active"{% endif %}>Dashboard</a>
-            <a href="/documents" {% if "/documents" in request.url.path %}class="active"{% endif %}>Documents</a>
+            <a href="/documents" {% if "/documents" in request.url.path and "/create-transaction" not in request.url.path %}class="active"{% endif %}>Documents</a>
+            <a href="/transactions" {% if "/transactions" in request.url.path %}class="active"{% endif %}>Transactions</a>
+            <a href="/approvals" {% if "/approvals" in request.url.path %}class="active"{% endif %}>Approvals</a>
+            <a href="/vendors" {% if "/vendors" in request.url.path %}class="active"{% endif %}>Vendors</a>
             <a href="/audit" {% if request.url.path == "/audit" %}class="active"{% endif %}>Audit Log</a>
         </nav>
     </header>

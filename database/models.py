@@ -65,6 +65,12 @@ class QBSyncStatus(enum.Enum):
     ERROR = "error"
 
 
+class IIFType(enum.Enum):
+    BILL = "bill"
+    CHECK = "check"
+    DEPOSIT = "deposit"
+
+
 class InvoiceStatus(enum.Enum):
     DRAFT = "draft"
     SENT = "sent"
@@ -161,6 +167,7 @@ class Transaction(Base):
     amount = Column(Float, nullable=False)
     category = Column(String(100))
     qb_account = Column(String(200))
+    iif_type = Column(Enum(IIFType))
     qb_sync_status = Column(Enum(QBSyncStatus), default=QBSyncStatus.PENDING)
     iif_file_path = Column(String(500))
     approval_id = Column(Integer, ForeignKey("approvals.id"))
@@ -229,6 +236,24 @@ class ApprovalRequest(Base):
 
     def __repr__(self):
         return f"<ApprovalRequest(type='{self.request_type.value}', status='{self.status.value}')>"
+
+
+class VendorMapping(Base):
+    """Maps vendor names to Schedule F categories for automatic categorization."""
+    __tablename__ = "vendor_mappings"
+
+    id = Column(Integer, primary_key=True)
+    vendor_name = Column(String(200), nullable=False, unique=True)  # lowercase
+    vendor_display_name = Column(String(200))
+    category_slug = Column(String(100), nullable=False)
+    qb_account = Column(String(200))  # optional override
+    entity_id = Column(Integer, ForeignKey("entities.id"))  # optional, for entity-specific overrides
+    source = Column(String(50), default="manual")  # manual, claude_api, csv_import, seed
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<VendorMapping(vendor='{self.vendor_name}', category='{self.category_slug}')>"
 
 
 class AuditLog(Base):

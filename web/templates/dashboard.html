@@ -22,6 +22,22 @@
         <div class="label">Pending Approvals</div>
         <div class="value {% if stats.pending_approvals > 0 %}warning{% endif %}">{{ stats.pending_approvals }}</div>
     </div>
+    <div class="stat-card">
+        <div class="label">Transactions</div>
+        <div class="value">{{ stats.total_transactions }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Pending QB</div>
+        <div class="value {% if stats.pending_transactions > 0 %}warning{% endif %}">{{ stats.pending_transactions }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">IIF Ready</div>
+        <div class="value" style="color: var(--accent);">{{ stats.iif_ready }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Synced</div>
+        <div class="value success">{{ stats.synced_transactions }}</div>
+    </div>
 </div>
 
 <div class="card">
@@ -57,6 +73,43 @@
     <p class="empty">No documents yet. Drop a PDF in the scanner folder to get started.</p>
     {% endif %}
 </div>
+
+{% if pending_approvals %}
+<div class="card">
+    <h2>Pending Approvals</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th>Requested</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for approval in pending_approvals %}
+            <tr>
+                <td><a href="/approvals/{{ approval.id }}">{{ approval.id }}</a></td>
+                <td><span class="badge info">{{ approval.request_type.value }}</span></td>
+                <td>{{ approval.action_description }}</td>
+                <td>{{ approval.requested_at.strftime('%Y-%m-%d %H:%M') if approval.requested_at else "—" }}</td>
+                <td class="actions">
+                    <form method="POST" action="/approvals/{{ approval.id }}/decide" style="display:inline;">
+                        <input type="hidden" name="decision" value="approved">
+                        <button type="submit" class="btn btn-success btn-sm">Approve</button>
+                    </form>
+                    <form method="POST" action="/approvals/{{ approval.id }}/decide" style="display:inline;">
+                        <input type="hidden" name="decision" value="rejected">
+                        <button type="submit" class="btn btn-danger btn-sm">Reject</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
 
 <div class="card">
     <h2>Entities</h2>

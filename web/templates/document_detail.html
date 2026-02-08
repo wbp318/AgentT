@@ -24,6 +24,15 @@
     </table>
 </div>
 
+{% if doc.status.value == 'filed' and doc.extracted_data %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>Actions</h2>
+    </div>
+    <a href="/documents/{{ doc.id }}/create-transaction" class="btn btn-primary">Create Transaction</a>
+</div>
+{% endif %}
+
 {% if doc.extracted_data %}
 <div class="card">
     <h2>Extracted Data</h2>

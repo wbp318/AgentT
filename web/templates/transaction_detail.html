@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title_extra %} — Transaction #{{ txn.id }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Transaction #{{ txn.id }}</h2>
+    <table>
+        <tr><th style="width:200px">Type</th><td>{{ txn.iif_type.value | upper if txn.iif_type else txn.transaction_type.value }}</td></tr>
+        <tr><th>Transaction Type</th><td>{{ txn.transaction_type.value }}</td></tr>
+        <tr><th>Date</th><td>{{ txn.date.strftime('%Y-%m-%d') if txn.date else "—" }}</td></tr>
+        <tr><th>Vendor / Customer</th><td>{{ txn.vendor_customer or "—" }}</td></tr>
+        <tr><th>Amount</th><td>${{ "%.2f"|format(txn.amount) }}</td></tr>
+        <tr><th>Category</th><td>{{ (txn.category or "—") | replace('_', ' ') | title }}</td></tr>
+        <tr><th>QB Account</th><td>{{ txn.qb_account or "—" }}</td></tr>
+        <tr><th>Reference #</th><td>{{ txn.reference_number or "—" }}</td></tr>
+        <tr><th>Description</th><td>{{ txn.description or "—" }}</td></tr>
+        <tr><th>Entity</th><td>{{ txn.entity.name if txn.entity else "—" }}</td></tr>
+        <tr><th>QB Status</th><td>
+            <span class="badge {% if txn.qb_sync_status.value == 'synced' %}synced{% elif txn.qb_sync_status.value == 'iif_generated' %}iif_generated{% elif txn.qb_sync_status.value == 'error' %}error{% else %}pending{% endif %}">
+                {{ txn.qb_sync_status.value | replace('_', ' ') }}
+            </span>
+        </td></tr>
+        {% if txn.document %}
+        <tr><th>Source Document</th><td><a href="/documents/{{ txn.document_id }}">{{ txn.document.original_filename }}</a></td></tr>
+        {% endif %}
+        <tr><th>Created</th><td>{{ txn.created_at.strftime('%Y-%m-%d %H:%M:%S') if txn.created_at else "—" }}</td></tr>
+    </table>
+</div>
+
+{% if iif_preview %}
+<div class="card">
+    <h2>IIF Preview</h2>
+    <pre style="background: var(--bg); padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.85rem; white-space: pre;">{{ iif_preview }}</pre>
+</div>
+{% endif %}
+
+<div class="actions" style="margin-top: 1rem;">
+    {% if txn.iif_file_path %}
+    <a href="/transactions/{{ txn.id }}/download-iif" class="btn btn-primary">Download IIF</a>
+    {% endif %}
+    {% if txn.qb_sync_status.value == 'iif_generated' %}
+    <form method="POST" action="/transactions/{{ txn.id }}/mark-synced" style="display:inline;">
+        <button type="submit" class="btn btn-success">Mark as Synced in QB</button>
+    </form>
+    {% endif %}
+    <a href="/transactions" class="btn">Back to Transactions</a>
+</div>
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title_extra %} — Transactions{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Transactions</h2>
+    {% if transactions %}
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Vendor/Customer</th>
+                <th>Amount</th>
+                <th>Category</th>
+                <th>IIF</th>
+                <th>QB Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for txn in transactions %}
+            <tr>
+                <td><a href="/transactions/{{ txn.id }}">{{ txn.id }}</a></td>
+                <td>{{ txn.date.strftime('%Y-%m-%d') if txn.date else "—" }}</td>
+                <td>{{ txn.iif_type.value | upper if txn.iif_type else txn.transaction_type.value }}</td>
+                <td>{{ txn.vendor_customer or "—" }}</td>
+                <td>${{ "%.2f"|format(txn.amount) }}</td>
+                <td>{{ (txn.category or "—") | replace('_', ' ') | title }}</td>
+                <td>
+                    {% if txn.iif_file_path %}
+                    <a href="/transactions/{{ txn.id }}/download-iif" class="btn btn-sm">Download</a>
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
+                <td>
+                    <span class="badge {% if txn.qb_sync_status.value == 'synced' %}synced{% elif txn.qb_sync_status.value == 'iif_generated' %}iif_generated{% elif txn.qb_sync_status.value == 'error' %}error{% else %}pending{% endif %}">
+                        {{ txn.qb_sync_status.value | replace('_', ' ') }}
+                    </span>
+                </td>
+                <td class="actions">
+                    {% if txn.qb_sync_status.value == 'iif_generated' %}
+                    <form method="POST" action="/transactions/{{ txn.id }}/mark-synced" style="display:inline;">
+                        <button type="submit" class="btn btn-success btn-sm">Mark Synced</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No transactions yet. Create one from a filed document.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title_extra %} — Approvals{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Pending Approvals</h2>
+    {% if pending %}
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th>Entity</th>
+                <th>Requested</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for approval in pending %}
+            <tr>
+                <td><a href="/approvals/{{ approval.id }}">{{ approval.id }}</a></td>
+                <td><span class="badge info">{{ approval.request_type.value }}</span></td>
+                <td>{{ approval.action_description }}</td>
+                <td>{{ approval.entity_name or "—" }}</td>
+                <td>{{ approval.requested_at.strftime('%Y-%m-%d %H:%M') if approval.requested_at else "—" }}</td>
+                <td class="actions">
+                    <form method="POST" action="/approvals/{{ approval.id }}/decide" style="display:inline;">
+                        <input type="hidden" name="decision" value="approved">
+                        <button type="submit" class="btn btn-success btn-sm">Approve</button>
+                    </form>
+                    <form method="POST" action="/approvals/{{ approval.id }}/decide" style="display:inline;">
+                        <input type="hidden" name="decision" value="rejected">
+                        <button type="submit" class="btn btn-danger btn-sm">Reject</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No pending approvals.</p>
+    {% endif %}
+</div>
+
+{% if decided %}
+<div class="card">
+    <h2>Recent Decisions</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th>Status</th>
+                <th>Decided By</th>
+                <th>Decided At</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for approval in decided %}
+            <tr>
+                <td><a href="/approvals/{{ approval.id }}">{{ approval.id }}</a></td>
+                <td><span class="badge info">{{ approval.request_type.value }}</span></td>
+                <td>{{ approval.action_description }}</td>
+                <td>
+                    <span class="badge {{ approval.status.value }}">{{ approval.status.value }}</span>
+                </td>
+                <td>{{ approval.decided_by or "—" }}</td>
+                <td>{{ approval.decided_at.strftime('%Y-%m-%d %H:%M') if approval.decided_at else "—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}

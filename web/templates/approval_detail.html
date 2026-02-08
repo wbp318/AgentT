@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title_extra %} — Approval #{{ approval.id }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Approval #{{ approval.id }}</h2>
+    <table>
+        <tr><th style="width:200px">Status</th><td>
+            <span class="badge {{ approval.status.value }}">{{ approval.status.value }}</span>
+        </td></tr>
+        <tr><th>Type</th><td>{{ approval.request_type.value }}</td></tr>
+        <tr><th>Description</th><td>{{ approval.action_description }}</td></tr>
+        <tr><th>Entity</th><td>{{ entity_name or "—" }}</td></tr>
+        <tr><th>Requested At</th><td>{{ approval.requested_at.strftime('%Y-%m-%d %H:%M:%S') if approval.requested_at else "—" }}</td></tr>
+        {% if approval.decided_at %}
+        <tr><th>Decided At</th><td>{{ approval.decided_at.strftime('%Y-%m-%d %H:%M:%S') }}</td></tr>
+        <tr><th>Decided By</th><td>{{ approval.decided_by or "—" }}</td></tr>
+        {% endif %}
+        {% if approval.notes %}
+        <tr><th>Notes</th><td>{{ approval.notes }}</td></tr>
+        {% endif %}
+    </table>
+</div>
+
+{% if approval.data_payload %}
+<div class="card">
+    <h2>Transaction Details</h2>
+    <table>
+        {% if approval.data_payload.vendor %}
+        <tr><th style="width:200px">Vendor</th><td>{{ approval.data_payload.vendor }}</td></tr>
+        {% endif %}
+        {% if approval.data_payload.amount %}
+        <tr><th>Amount</th><td>${{ "%.2f"|format(approval.data_payload.amount) }}</td></tr>
+        {% endif %}
+        {% if approval.data_payload.date %}
+        <tr><th>Date</th><td>{{ approval.data_payload.date }}</td></tr>
+        {% endif %}
+        {% if approval.data_payload.category %}
+        <tr><th>Category</th><td>{{ approval.data_payload.category | replace('_', ' ') | title }}</td></tr>
+        {% endif %}
+        {% if approval.data_payload.qb_account %}
+        <tr><th>QB Account</th><td>{{ approval.data_payload.qb_account }}</td></tr>
+        {% endif %}
+        {% if approval.data_payload.iif_type %}
+        <tr><th>IIF Type</th><td>{{ approval.data_payload.iif_type | upper }}</td></tr>
+        {% endif %}
+        {% if approval.data_payload.transaction_id %}
+        <tr><th>Transaction</th><td><a href="/transactions/{{ approval.data_payload.transaction_id }}">#{{ approval.data_payload.transaction_id }}</a></td></tr>
+        {% endif %}
+        {% if approval.data_payload.document_id %}
+        <tr><th>Document</th><td><a href="/documents/{{ approval.data_payload.document_id }}">View Document</a></td></tr>
+        {% endif %}
+    </table>
+</div>
+{% endif %}
+
+{% if approval.status.value == 'pending' %}
+<div class="card">
+    <h2>Decision</h2>
+    <form method="POST" action="/approvals/{{ approval.id }}/decide">
+        <div class="form-group">
+            <label for="notes">Notes (optional)</label>
+            <textarea name="notes" id="notes" placeholder="Add notes about your decision..."></textarea>
+        </div>
+        <div class="actions">
+            <button type="submit" name="decision" value="approved" class="btn btn-success">Approve</button>
+            <button type="submit" name="decision" value="rejected" class="btn btn-danger">Reject</button>
+            <a href="/approvals" class="btn">Back to Queue</a>
+        </div>
+    </form>
+</div>
+{% else %}
+<div class="actions" style="margin-top: 1rem;">
+    <a href="/approvals" class="btn">Back to Approvals</a>
+</div>
+{% endif %}
+{% endblock %}

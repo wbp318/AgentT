@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title_extra %} — Create Transaction{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Create Transaction from: {{ doc.original_filename }}</h2>
+
+    {% if error %}
+    <div class="flash flash-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/documents/{{ doc.id }}/create-transaction">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="entity_id">Entity</label>
+                <select name="entity_id" id="entity_id" required>
+                    {% for entity in entities %}
+                    <option value="{{ entity.id }}" {% if entity.id == selected_entity_id %}selected{% endif %}>
+                        {{ entity.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="iif_type">IIF Type</label>
+                <select name="iif_type" id="iif_type" required>
+                    <option value="bill" {% if default_iif_type == 'bill' %}selected{% endif %}>BILL (AP Entry)</option>
+                    <option value="check" {% if default_iif_type == 'check' %}selected{% endif %}>CHECK (Direct Payment)</option>
+                    <option value="deposit" {% if default_iif_type == 'deposit' %}selected{% endif %}>DEPOSIT (Income)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="transaction_type">Transaction Type</label>
+                <select name="transaction_type" id="transaction_type" required>
+                    <option value="expense" {% if default_txn_type == 'expense' %}selected{% endif %}>Expense</option>
+                    <option value="income" {% if default_txn_type == 'income' %}selected{% endif %}>Income</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="date">Date</label>
+                <input type="date" name="date" id="date" value="{{ prefill.date or '' }}" required>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="vendor_customer">Vendor / Customer</label>
+                <input type="text" name="vendor_customer" id="vendor_customer"
+                       value="{{ prefill.vendor or '' }}"
+                       hx-post="/api/categorize"
+                       hx-trigger="blur"
+                       hx-include="[name='transaction_type']"
+                       hx-target="#category-suggestion">
+            </div>
+            <div class="form-group">
+                <label for="amount">Amount ($)</label>
+                <input type="number" name="amount" id="amount" step="0.01" min="0"
+                       value="{{ prefill.amount or '' }}" required>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="reference_number">Reference / Invoice #</label>
+                <input type="text" name="reference_number" id="reference_number"
+                       value="{{ prefill.reference_number or '' }}">
+            </div>
+            <div class="form-group">
+                <label for="description">Description</label>
+                <input type="text" name="description" id="description"
+                       value="{{ prefill.description or '' }}">
+            </div>
+        </div>
+
+        <div id="category-suggestion">
+            {% if suggestion %}
+            <div class="flash flash-success" style="margin-top: 0;">
+                Suggested: <strong>{{ suggestion.category }}</strong>
+                ({{ suggestion.qb_account }}) — {{ suggestion.source }}
+                {% if suggestion.confidence %}({{ "%.0f%%"|format(suggestion.confidence * 100) }} confidence){% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="category">Category</label>
+                <select name="category" id="category">
+                    <optgroup label="Expense Categories">
+                        {% for cat in expense_categories %}
+                        <option value="{{ cat }}" {% if suggestion and suggestion.category == cat %}selected{% endif %}>
+                            {{ cat | replace('_', ' ') | title }}
+                        </option>
+                        {% endfor %}
+                    </optgroup>
+                    <optgroup label="Income Categories">
+                        {% for cat in income_categories %}
+                        <option value="{{ cat }}" {% if suggestion and suggestion.category == cat %}selected{% endif %}>
+                            {{ cat | replace('_', ' ') | title }}
+                        </option>
+                        {% endfor %}
+                    </optgroup>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="qb_account">QB Account</label>
+                <input type="text" name="qb_account" id="qb_account"
+                       value="{{ suggestion.qb_account if suggestion else '' }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="save_vendor_mapping" value="1" style="width: auto; margin-right: 0.5rem;">
+                Save vendor mapping for future auto-categorization
+            </label>
+        </div>
+
+        <div class="actions" style="margin-top: 1.5rem;">
+            <button type="submit" class="btn btn-primary">Create Transaction & Submit for Approval</button>
+            <a href="/documents/{{ doc.id }}" class="btn">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

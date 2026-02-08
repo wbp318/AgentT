@@ -6,7 +6,7 @@ Resolves which business entity a document or transaction belongs to.
 import logging
 from sqlalchemy.orm import Session
 
-from database.models import Entity, EntityType, AccountingMethod
+from database.models import Entity, EntityType, AccountingMethod, VendorMapping
 from config.entities import ENTITIES
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,30 @@ def seed_entities(session: Session):
         )
         session.add(entity)
         logger.info(f"Seeded entity: {cfg['name']} ({slug})")
+
+    session.commit()
+
+
+def seed_vendor_mappings(session: Session):
+    """
+    Seed default vendor-to-category mappings from config.
+    Called during init-db. Idempotent (skips existing).
+    """
+    from config.qb_accounts import VENDOR_CATEGORY_DEFAULTS
+
+    for vendor_name, category_slug in VENDOR_CATEGORY_DEFAULTS.items():
+        existing = session.query(VendorMapping).filter_by(vendor_name=vendor_name).first()
+        if existing:
+            continue
+
+        mapping = VendorMapping(
+            vendor_name=vendor_name,
+            vendor_display_name=vendor_name.title(),
+            category_slug=category_slug,
+            source="seed",
+        )
+        session.add(mapping)
+        logger.info(f"Seeded vendor mapping: {vendor_name} -> {category_slug}")
 
     session.commit()
 

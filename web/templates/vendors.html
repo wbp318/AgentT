@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title_extra %} — Vendor Mappings{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Add / Update Vendor Mapping</h2>
+
+    {% if message %}
+    <div class="flash flash-success">{{ message }}</div>
+    {% endif %}
+    {% if error %}
+    <div class="flash flash-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/vendors/add">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="vendor_name">Vendor Name</label>
+                <input type="text" name="vendor_name" id="vendor_name" required placeholder="e.g. Helena Chemical">
+            </div>
+            <div class="form-group">
+                <label for="category_slug">Category</label>
+                <select name="category_slug" id="category_slug" required>
+                    <optgroup label="Expense Categories">
+                        {% for cat in expense_categories %}
+                        <option value="{{ cat }}">{{ cat | replace('_', ' ') | title }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    <optgroup label="Income Categories">
+                        {% for cat in income_categories %}
+                        <option value="{{ cat }}">{{ cat | replace('_', ' ') | title }}</option>
+                        {% endfor %}
+                    </optgroup>
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Mapping</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Vendor Mappings ({{ mappings | length }})</h2>
+    {% if mappings %}
+    <table>
+        <thead>
+            <tr>
+                <th>Vendor</th>
+                <th>Category</th>
+                <th>Source</th>
+                <th>Updated</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in mappings %}
+            <tr>
+                <td>{{ m.vendor_display_name or m.vendor_name }}</td>
+                <td>{{ m.category_slug | replace('_', ' ') | title }}</td>
+                <td><span class="badge info">{{ m.source }}</span></td>
+                <td>{{ m.updated_at.strftime('%Y-%m-%d') if m.updated_at else m.created_at.strftime('%Y-%m-%d') if m.created_at else "—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No vendor mappings yet. Run <code>python main.py init-db</code> to seed defaults, or add manually above.</p>
+    {% endif %}
+</div>
+{% endblock %}
