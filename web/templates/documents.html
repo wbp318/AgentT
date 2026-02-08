@@ -4,6 +4,22 @@
 {% block content %}
 <div class="card">
     <h2>All Documents</h2>
+    <form class="filter-bar" method="GET" action="/documents">
+        <select name="entity">
+            <option value="">All Entities</option>
+            {% for e in entities %}
+            <option value="{{ e.slug }}" {% if current_entity == e.slug %}selected{% endif %}>{{ e.name }}</option>
+            {% endfor %}
+        </select>
+        <select name="status">
+            <option value="">All Statuses</option>
+            {% for s in statuses %}
+            <option value="{{ s }}" {% if current_status == s %}selected{% endif %}>{{ s | replace('_', ' ') | title }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+        <a href="/documents" class="btn btn-sm">Clear</a>
+    </form>
     {% if documents %}
     <table>
         <thead>

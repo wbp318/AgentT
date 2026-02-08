@@ -1,0 +1,36 @@
+{% if jobs %}
+<table>
+    <thead>
+        <tr>
+            <th>Job</th>
+            <th>Last Run</th>
+            <th>Status</th>
+            <th>Detail</th>
+            <th>Next Run</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for job in jobs %}
+        <tr>
+            <td>{{ job.name }}</td>
+            <td>{{ job.last_run.strftime('%Y-%m-%d %H:%M:%S') if job.last_run else 'Never' }}</td>
+            <td>
+                <span class="badge {% if job.status == 'success' %}filed{% elif job.status == 'error' %}error{% elif job.status == 'skipped' %}draft{% else %}pending{% endif %}">
+                    {{ job.status | replace('_', ' ') }}
+                </span>
+            </td>
+            <td>{{ job.detail or '—' }}</td>
+            <td>{{ job.next_run.strftime('%Y-%m-%d %H:%M') if job.next_run else '—' }}</td>
+            <td>
+                <form method="POST" action="/jobs/{{ job.id }}/trigger" style="display:inline;">
+                    <button type="submit" class="btn btn-sm btn-primary">Run Now</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="empty">Scheduler not running.</p>
+{% endif %}

@@ -6,6 +6,7 @@ Provides document monitoring, approval workflows, and system status.
 import logging
 from datetime import date, datetime
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, Request, Depends, Form
 from fastapi.staticfiles import StaticFiles
@@ -125,17 +126,36 @@ async def dashboard(request: Request, db: Session = Depends(get_db_session)):
 # === Documents ===
 
 @app.get("/documents", response_class=HTMLResponse)
-async def documents_list(request: Request, db: Session = Depends(get_db_session)):
-    """All documents view."""
-    docs = (
-        db.query(Document)
-        .order_by(Document.scanned_at.desc())
-        .limit(100)
-        .all()
-    )
+async def documents_list(
+    request: Request,
+    db: Session = Depends(get_db_session),
+    entity: str = None,
+    status: str = None,
+):
+    """All documents view with optional entity/status filters."""
+    query = db.query(Document)
+
+    if entity:
+        ent = db.query(Entity).filter(Entity.slug == entity).first()
+        if ent:
+            query = query.filter(Document.entity_id == ent.id)
+    if status:
+        try:
+            query = query.filter(Document.status == DocumentStatus(status))
+        except ValueError:
+            pass
+
+    docs = query.order_by(Document.scanned_at.desc()).limit(100).all()
+    entities = db.query(Entity).filter(Entity.active == True).all()
+    statuses = [s.value for s in DocumentStatus]
+
     return templates.TemplateResponse("documents.html", {
         "request": request,
         "documents": docs,
+        "entities": entities,
+        "current_entity": entity or "",
+        "current_status": status or "",
+        "statuses": statuses,
     })
 
 
@@ -294,7 +314,8 @@ async def create_transaction_submit(
             transaction_id=txn.id,
         )
 
-    return RedirectResponse(url="/approvals", status_code=303)
+    msg = quote(f"Transaction created for ${amount:.2f} — pending approval")
+    return RedirectResponse(url=f"/approvals?msg={msg}&msg_type=success", status_code=303)
 
 
 # === Approvals ===
@@ -372,23 +393,53 @@ async def approval_decide(
     except ValueError as e:
         return HTMLResponse(str(e), status_code=400)
 
-    return RedirectResponse(url="/approvals", status_code=303)
+    msg = quote(f"Approval #{approval_id} {decision}")
+    return RedirectResponse(url=f"/approvals?msg={msg}&msg_type=success", status_code=303)
 
 
 # === Transactions ===
 
 @app.get("/transactions", response_class=HTMLResponse)
-async def transactions_list(request: Request, db: Session = Depends(get_db_session)):
-    """All transactions view."""
-    transactions = (
-        db.query(Transaction)
-        .order_by(Transaction.created_at.desc())
-        .limit(100)
-        .all()
-    )
+async def transactions_list(
+    request: Request,
+    db: Session = Depends(get_db_session),
+    entity: str = None,
+    status: str = None,
+):
+    """All transactions view with optional entity/status filters."""
+    query = db.query(Transaction)
+
+    # Apply filters
+    if entity:
+        ent = db.query(Entity).filter(Entity.slug == entity).first()
+        if ent:
+            query = query.filter(Transaction.entity_id == ent.id)
+    if status:
+        try:
+            query = query.filter(Transaction.qb_sync_status == QBSyncStatus(status))
+        except ValueError:
+            pass
+
+    transactions = query.order_by(Transaction.created_at.desc()).limit(100).all()
+
+    # Attach entity names
+    entity_cache = {}
+    for txn in transactions:
+        if txn.entity_id not in entity_cache:
+            ent_obj = db.get(Entity, txn.entity_id)
+            entity_cache[txn.entity_id] = ent_obj.name if ent_obj else "—"
+        txn.entity_name = entity_cache[txn.entity_id]
+
+    entities = db.query(Entity).filter(Entity.active == True).all()
+    statuses = [s.value for s in QBSyncStatus]
+
     return templates.TemplateResponse("transactions.html", {
         "request": request,
         "transactions": transactions,
+        "entities": entities,
+        "current_entity": entity or "",
+        "current_status": status or "",
+        "statuses": statuses,
     })
 
 
@@ -453,7 +504,8 @@ async def mark_synced(txn_id: int, db: Session = Depends(get_db_session)):
         user="user",
     )
 
-    return RedirectResponse(url="/transactions", status_code=303)
+    msg = quote(f"Transaction #{txn_id} marked as synced")
+    return RedirectResponse(url=f"/transactions?msg={msg}&msg_type=success", status_code=303)
 
 
 # === Vendors ===
@@ -488,25 +540,11 @@ async def vendor_add(
 
     try:
         save_vendor_mapping(vendor_name, category_slug, source="manual")
-        message = f"Saved mapping: {vendor_name} -> {category_slug}"
-        error = None
+        msg = quote(f"Saved mapping: {vendor_name} -> {category_slug}")
+        return RedirectResponse(url=f"/vendors?msg={msg}&msg_type=success", status_code=303)
     except Exception as e:
-        message = None
-        error = f"Failed to save mapping: {e}"
-
-    mappings = (
-        db.query(VendorMapping)
-        .order_by(VendorMapping.vendor_display_name)
-        .all()
-    )
-    return templates.TemplateResponse("vendors.html", {
-        "request": request,
-        "mappings": mappings,
-        "expense_categories": FARM_EXPENSE_CATEGORIES,
-        "income_categories": FARM_INCOME_CATEGORIES,
-        "message": message,
-        "error": error,
-    })
+        msg = quote(f"Failed to save mapping: {e}")
+        return RedirectResponse(url=f"/vendors?msg={msg}&msg_type=error", status_code=303)
 
 
 # === Audit ===
@@ -529,26 +567,45 @@ async def audit_log(request: Request, db: Session = Depends(get_db_session)):
 # === Invoices ===
 
 @app.get("/invoices", response_class=HTMLResponse)
-async def invoices_list(request: Request, db: Session = Depends(get_db_session)):
-    """Invoice list view."""
-    invoices = (
-        db.query(Invoice)
-        .order_by(Invoice.created_at.desc())
-        .limit(100)
-        .all()
-    )
+async def invoices_list(
+    request: Request,
+    db: Session = Depends(get_db_session),
+    entity: str = None,
+    status: str = None,
+):
+    """Invoice list view with optional entity/status filters."""
+    query = db.query(Invoice)
+
+    if entity:
+        ent = db.query(Entity).filter(Entity.slug == entity).first()
+        if ent:
+            query = query.filter(Invoice.entity_id == ent.id)
+    if status:
+        try:
+            query = query.filter(Invoice.status == InvoiceStatus(status))
+        except ValueError:
+            pass
+
+    invoices = query.order_by(Invoice.created_at.desc()).limit(100).all()
 
     # Attach entity names
     entity_cache = {}
     for inv in invoices:
         if inv.entity_id not in entity_cache:
-            entity = db.get(Entity, inv.entity_id)
-            entity_cache[inv.entity_id] = entity.name if entity else "—"
+            ent_obj = db.get(Entity, inv.entity_id)
+            entity_cache[inv.entity_id] = ent_obj.name if ent_obj else "—"
         inv.entity_name = entity_cache[inv.entity_id]
+
+    entities = db.query(Entity).filter(Entity.active == True).all()
+    statuses = [s.value for s in InvoiceStatus]
 
     return templates.TemplateResponse("invoices.html", {
         "request": request,
         "invoices": invoices,
+        "entities": entities,
+        "current_entity": entity or "",
+        "current_status": status or "",
+        "statuses": statuses,
     })
 
 
@@ -617,7 +674,8 @@ async def create_invoice_submit(
         notes=notes,
     )
 
-    return RedirectResponse(url=f"/invoices/{invoice_id}", status_code=303)
+    msg = quote("Invoice created successfully")
+    return RedirectResponse(url=f"/invoices/{invoice_id}?msg={msg}&msg_type=success", status_code=303)
 
 
 @app.get("/invoices/{invoice_id}", response_class=HTMLResponse)
@@ -712,7 +770,8 @@ async def edit_invoice_submit(
     except ValueError as e:
         return HTMLResponse(str(e), status_code=400)
 
-    return RedirectResponse(url=f"/invoices/{invoice_id}", status_code=303)
+    msg = quote("Invoice updated successfully")
+    return RedirectResponse(url=f"/invoices/{invoice_id}?msg={msg}&msg_type=success", status_code=303)
 
 
 @app.get("/invoices/{invoice_id}/pdf")
@@ -746,7 +805,8 @@ async def invoice_send(invoice_id: int, request: Request):
     except ValueError as e:
         return HTMLResponse(str(e), status_code=400)
 
-    return RedirectResponse(url=f"/invoices/{invoice_id}", status_code=303)
+    msg = quote("Invoice marked as sent")
+    return RedirectResponse(url=f"/invoices/{invoice_id}?msg={msg}&msg_type=success", status_code=303)
 
 
 @app.post("/invoices/{invoice_id}/payment")
@@ -772,7 +832,8 @@ async def invoice_payment(
     except ValueError as e:
         return HTMLResponse(str(e), status_code=400)
 
-    return RedirectResponse(url=f"/invoices/{invoice_id}", status_code=303)
+    msg = quote(f"Payment of ${payment_amount:.2f} recorded")
+    return RedirectResponse(url=f"/invoices/{invoice_id}?msg={msg}&msg_type=success", status_code=303)
 
 
 @app.post("/invoices/{invoice_id}/void")
@@ -787,7 +848,8 @@ async def invoice_void(invoice_id: int, request: Request, reason: str = Form("")
     except ValueError as e:
         return HTMLResponse(str(e), status_code=400)
 
-    return RedirectResponse(url=f"/invoices/{invoice_id}", status_code=303)
+    msg = quote("Invoice voided")
+    return RedirectResponse(url=f"/invoices/{invoice_id}?msg={msg}&msg_type=warning", status_code=303)
 
 
 @app.post("/invoices/{invoice_id}/reminder")
@@ -807,6 +869,57 @@ async def invoice_reminder(invoice_id: int, request: Request):
         filename=Path(pdf_path).name,
         media_type="application/pdf",
     )
+
+
+# === Jobs ===
+
+@app.get("/jobs", response_class=HTMLResponse)
+async def jobs_page(request: Request):
+    """Scheduled jobs status page."""
+    scheduler = getattr(request.app.state, "scheduler", None)
+    jobs = scheduler.get_jobs_status() if scheduler else []
+    return templates.TemplateResponse("jobs.html", {
+        "request": request,
+        "jobs": jobs,
+    })
+
+
+@app.get("/api/jobs-table", response_class=HTMLResponse)
+async def api_jobs_table(request: Request):
+    """HTMX partial: jobs status table."""
+    scheduler = getattr(request.app.state, "scheduler", None)
+    jobs = scheduler.get_jobs_status() if scheduler else []
+    return templates.TemplateResponse("partials/jobs_table.html", {
+        "request": request,
+        "jobs": jobs,
+    })
+
+
+@app.post("/jobs/{job_id}/trigger")
+async def trigger_job(job_id: str, request: Request):
+    """Manually trigger a scheduled job."""
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if not scheduler:
+        return HTMLResponse("Scheduler not running", status_code=500)
+
+    triggered = scheduler.trigger_job(job_id)
+    if not triggered:
+        msg = quote(f"Job '{job_id}' not found")
+        return RedirectResponse(url=f"/jobs?msg={msg}&msg_type=error", status_code=303)
+
+    msg = quote(f"Job '{job_id}' triggered")
+
+    # Support HTMX requests — return partial if HX-Request header present
+    if request.headers.get("HX-Request"):
+        import asyncio
+        await asyncio.sleep(1)  # Give job a moment to run
+        jobs = scheduler.get_jobs_status()
+        return templates.TemplateResponse("partials/jobs_table.html", {
+            "request": request,
+            "jobs": jobs,
+        })
+
+    return RedirectResponse(url=f"/jobs?msg={msg}&msg_type=success", status_code=303)
 
 
 # === API Endpoints (for HTMX partial updates) ===

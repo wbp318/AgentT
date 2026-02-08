@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title_extra %} — Jobs{% endblock %}
+
+{% block content %}
+<h2 style="margin-bottom: 1.5rem;">Scheduled Jobs</h2>
+
+<div class="card" id="jobs-table-container"
+     hx-get="/api/jobs-table" hx-trigger="every 30s" hx-swap="innerHTML">
+    {% include "partials/jobs_table.html" %}
+</div>
+
+<div class="card">
+    <h2>Job Descriptions</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Job</th>
+                <th>Schedule</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Check Overdue Invoices</td>
+                <td>Daily 7:00 AM CT</td>
+                <td>Scans SENT invoices past their due date and marks them OVERDUE</td>
+            </tr>
+            <tr>
+                <td>Database Backup</td>
+                <td>Daily 2:00 AM CT</td>
+                <td>Copies agent_t.db to data/backups/ with timestamp, keeps last 30</td>
+            </tr>
+            <tr>
+                <td>Scanner Sweep</td>
+                <td>Every 5 minutes</td>
+                <td>Checks scanner folder for files not yet in the database and processes them</td>
+            </tr>
+            <tr>
+                <td>Status Digest</td>
+                <td>Daily 6:00 PM CT</td>
+                <td>Writes a summary of pending items to logs/daily_digest.log</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}

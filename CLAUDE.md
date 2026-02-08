@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AgentT is a farm office automation agent for a multi-entity agricultural operation (two Louisiana row crop farms + a Georgia real estate operation). It runs locally on the office PC alongside QuickBooks Desktop. The agent watches a scanner output folder, OCRs documents, classifies and extracts data via Claude API, auto-files them, generates QuickBooks IIF import files with an approval workflow, and produces outbound invoices with PDF generation and payment tracking.
+AgentT is a farm office automation agent for a multi-entity agricultural operation (two Louisiana row crop farms + a Georgia real estate operation). It runs locally on the office PC alongside QuickBooks Desktop. The agent watches a scanner output folder, OCRs documents, classifies and extracts data via Claude API, auto-files them, generates QuickBooks IIF import files with an approval workflow, produces outbound invoices with PDF generation and payment tracking, and runs scheduled background jobs for overdue checking, database backups, scanner sweeps, and daily digest reports.
 
 ## Commands
 
@@ -16,7 +16,7 @@ python main.py scan             # Scanner only (no dashboard)
 python main.py status           # Show entity/document/transaction/approval/invoice counts
 python main.py --log-level DEBUG run  # Verbose logging
 
-pytest tests/                   # Run all tests (50 tests)
+pytest tests/                   # Run all tests (67 tests)
 pytest tests/test_iif_generator.py -v          # Run one test file
 pytest tests/test_approval.py -k "test_cannot" # Run a single test by name
 ```
@@ -48,11 +48,20 @@ User creates invoice via web UI → InvoiceGenerator.create_invoice() → DRAFT
   → check_overdue() → OVERDUE → generate_reminder_pdf()
 ```
 
+**Phase 4 — Scheduled Jobs (automatic):**
+```
+TaskScheduler.start() → BackgroundScheduler runs 4 jobs:
+  check_overdue    (daily 7 AM CT)  → InvoiceGenerator.check_overdue()
+  database_backup  (daily 2 AM CT)  → shutil.copy2 → data/backups/
+  scanner_sweep    (every 5 min)    → emit FILE_ARRIVED for new files
+  status_digest    (daily 6 PM CT)  → append to logs/daily_digest.log
+```
+
 ### Module Contract
 
 Every module follows the same interface pattern for the `AgentT` orchestrator (`core/agent.py`):
 - `setup(event_bus)` — subscribe to events (called on `agent.register_module()`)
-- `start()` — begin active work (optional, only ScannerWatcher uses this)
+- `start()` — begin active work (ScannerWatcher and TaskScheduler use this)
 - `stop()` — clean shutdown (optional)
 
 Modules are registered in `main.py` and wired together through the event bus — they never import each other directly.
@@ -68,7 +77,7 @@ Transaction creation is **manual** — user clicks "Create Transaction" on a fil
 6. `IIFGenerator` subscribes to `APPROVAL_DECIDED`, auto-generates IIF file
 7. User downloads IIF, imports into QuickBooks Desktop, marks as synced
 
-Key services are accessed via `request.app.state` in web routes (categorizer, iif_generator, approval_engine, invoice_generator, event_bus). These are wired in `main.py` during startup.
+Key services are accessed via `request.app.state` in web routes (categorizer, iif_generator, approval_engine, invoice_generator, scheduler, event_bus). These are wired in `main.py` during startup.
 
 Each entity has a **separate QB company file** — IIF files go to `data/exports/iif/{entity_slug}/{YYYY-MM}/`.
 
@@ -145,6 +154,8 @@ All models are in `database/models.py` (7 tables, 11 enums). Flexible data uses 
 
 FastAPI + Jinja2 templates + HTMX (loaded from CDN, no build step). All routes are in `web/app.py`. Binds to `127.0.0.1:8080` by default. Templates extend `base.html`. Dark theme via inline CSS custom properties. No authentication (localhost-only, single-user).
 
+**Phase 4 additions:** Flash messages via query params (`?msg=...&msg_type=success`), entity/status filter bars on documents/transactions/invoices list pages, entity column on transactions table, Jobs page (`/jobs`) with HTMX auto-refresh and manual "Run Now" buttons.
+
 ### Expense Categorization
 
 `modules/quickbooks/categorizer.py` — `ExpenseCategorizer` is called as a service (not an event handler):
@@ -173,7 +184,8 @@ Modules catch exceptions and emit `ERROR_OCCURRED` events. The agent subscribes 
 - **Config**: python-dotenv
 - **Testing**: pytest, pytest-asyncio
 - **PDF generation**: weasyprint (requires GTK/Pango on Windows)
-- **Installed but not yet used**: APScheduler (Phase 4), pandas
+- **Scheduling**: APScheduler 3.x (BackgroundScheduler, Central time)
+- **Installed but not yet used**: pandas
 
 ## Configuration
 
@@ -189,12 +201,16 @@ Entity definitions (names, types, states, keywords, crops, branding, invoice pre
 
 ## Testing
 
+67 tests across 5 files: `test_approval.py` (8), `test_categorizer.py` (7), `test_iif_generator.py` (12), `test_invoice_generator.py` (23), `test_scheduler.py` (17).
+
 Tests use in-memory SQLite databases with mock `get_session` pattern:
 ```python
 with patch("module.path.get_session") as mock_gs:
     mock_gs.return_value.__enter__ = lambda s: db_session
     mock_gs.return_value.__exit__ = MagicMock(return_value=False)
 ```
+
+**Important:** The mock `get_session` does NOT auto-commit (unlike the real one). To verify state changes on ORM objects, use `db_session.get(Model, id)` instead of `db_session.refresh(obj)` — `refresh()` does a SELECT that discards uncommitted dirty state.
 
 `datetime.utcnow()` deprecation warnings from SQLAlchemy model defaults are known and non-critical.
 
@@ -208,7 +224,6 @@ WeasyPrint tests mock `sys.modules["weasyprint"]` to avoid GTK/Pango dependency 
 
 ## Planned Phases
 
-Phases 1, 2, and 3 are complete. Upcoming:
-- **Phase 4**: Dashboard polish + APScheduler task automation
+Phases 1-4 are complete. Upcoming:
 - **Phase 5**: FSA/USDA crop reporting module
 - **Phase 6**: Live QB sync via Conductor.is

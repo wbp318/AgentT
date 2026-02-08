@@ -4,11 +4,28 @@
 {% block content %}
 <div class="card">
     <h2>Transactions</h2>
+    <form class="filter-bar" method="GET" action="/transactions">
+        <select name="entity">
+            <option value="">All Entities</option>
+            {% for e in entities %}
+            <option value="{{ e.slug }}" {% if current_entity == e.slug %}selected{% endif %}>{{ e.name }}</option>
+            {% endfor %}
+        </select>
+        <select name="status">
+            <option value="">All Statuses</option>
+            {% for s in statuses %}
+            <option value="{{ s }}" {% if current_status == s %}selected{% endif %}>{{ s | replace('_', ' ') | title }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+        <a href="/transactions" class="btn btn-sm">Clear</a>
+    </form>
     {% if transactions %}
     <table>
         <thead>
             <tr>
                 <th>#</th>
+                <th>Entity</th>
                 <th>Date</th>
                 <th>Type</th>
                 <th>Vendor/Customer</th>
@@ -23,6 +40,7 @@
             {% for txn in transactions %}
             <tr>
                 <td><a href="/transactions/{{ txn.id }}">{{ txn.id }}</a></td>
+                <td>{{ txn.entity_name }}</td>
                 <td>{{ txn.date.strftime('%Y-%m-%d') if txn.date else "—" }}</td>
                 <td>{{ txn.iif_type.value | upper if txn.iif_type else txn.transaction_type.value }}</td>
                 <td>{{ txn.vendor_customer or "—" }}</td>

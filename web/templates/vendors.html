@@ -5,13 +5,6 @@
 <div class="card">
     <h2>Add / Update Vendor Mapping</h2>
 
-    {% if message %}
-    <div class="flash flash-success">{{ message }}</div>
-    {% endif %}
-    {% if error %}
-    <div class="flash flash-error">{{ error }}</div>
-    {% endif %}
-
     <form method="POST" action="/vendors/add">
         <div class="form-row">
             <div class="form-group">

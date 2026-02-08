@@ -66,6 +66,7 @@ def run():
     from modules.quickbooks.categorizer import ExpenseCategorizer
     from modules.quickbooks.iif_generator import IIFGenerator
     from modules.billing.invoice_generator import InvoiceGenerator
+    from modules.scheduler.task_scheduler import TaskScheduler
     from core.approval import ApprovalEngine
     from config.settings import WEB_HOST, WEB_PORT, SCANNER_WATCH_DIR
 
@@ -100,6 +101,10 @@ def run():
     invoice_generator = InvoiceGenerator()
     agent.register_module("invoice_generator", invoice_generator)
 
+    # Phase 4 scheduler
+    scheduler = TaskScheduler()
+    agent.register_module("scheduler", scheduler)
+
     agent.start()
     console.print(f"[green]Scanner watching:[/green] {SCANNER_WATCH_DIR}")
     console.print(f"[green]Dashboard:[/green] http://{WEB_HOST}:{WEB_PORT}")
@@ -114,6 +119,7 @@ def run():
     app.state.iif_generator = iif_generator
     app.state.approval_engine = approval_engine
     app.state.invoice_generator = invoice_generator
+    app.state.scheduler = scheduler
 
     server_thread = threading.Thread(
         target=uvicorn.run,
@@ -141,6 +147,7 @@ def web():
     from modules.quickbooks.categorizer import ExpenseCategorizer
     from modules.quickbooks.iif_generator import IIFGenerator
     from modules.billing.invoice_generator import InvoiceGenerator
+    from modules.scheduler.task_scheduler import TaskScheduler
     from core.approval import ApprovalEngine
 
     _init_db()
@@ -157,6 +164,9 @@ def web():
     approval_engine.setup(event_bus)
     invoice_generator = InvoiceGenerator()
     invoice_generator.setup(event_bus)
+    scheduler = TaskScheduler()
+    scheduler.setup(event_bus)
+    scheduler.start()
 
     import uvicorn
     from web.app import app
@@ -166,8 +176,12 @@ def web():
     app.state.iif_generator = iif_generator
     app.state.approval_engine = approval_engine
     app.state.invoice_generator = invoice_generator
+    app.state.scheduler = scheduler
 
-    uvicorn.run(app, host=WEB_HOST, port=WEB_PORT)
+    try:
+        uvicorn.run(app, host=WEB_HOST, port=WEB_PORT)
+    finally:
+        scheduler.stop()
 
 
 @cli.command()
@@ -182,6 +196,7 @@ def scan():
     from modules.quickbooks.categorizer import ExpenseCategorizer
     from modules.quickbooks.iif_generator import IIFGenerator
     from modules.billing.invoice_generator import InvoiceGenerator
+    from modules.scheduler.task_scheduler import TaskScheduler
     from core.approval import ApprovalEngine
     from config.settings import SCANNER_WATCH_DIR
 
@@ -211,6 +226,10 @@ def scan():
     # Phase 3 modules
     invoice_generator = InvoiceGenerator()
     agent.register_module("invoice_generator", invoice_generator)
+
+    # Phase 4 scheduler
+    scheduler = TaskScheduler()
+    agent.register_module("scheduler", scheduler)
 
     agent.start()
     console.print(f"[green]Scanner watching:[/green] {SCANNER_WATCH_DIR}")
