@@ -4,20 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AgentT is a farm office automation agent for a multi-entity agricultural operation (two Louisiana row crop farms + a Georgia real estate operation). It runs locally on the office PC alongside QuickBooks Desktop. The agent watches a scanner output folder, OCRs documents, classifies and extracts data via Claude API, auto-files them, and (in later phases) generates QuickBooks IIF import files.
+AgentT is a farm office automation agent for a multi-entity agricultural operation (two Louisiana row crop farms + a Georgia real estate operation). It runs locally on the office PC alongside QuickBooks Desktop. The agent watches a scanner output folder, OCRs documents, classifies and extracts data via Claude API, auto-files them, and generates QuickBooks IIF import files with an approval workflow.
 
 ## Commands
 
 ```bash
-python main.py init-db          # Create tables + seed entities (run first)
+python main.py init-db          # Create tables + seed entities + vendor mappings (run first)
 python main.py run              # Start scanner watcher + web dashboard
 python main.py web              # Web dashboard only (no scanner)
 python main.py scan             # Scanner only (no dashboard)
-python main.py status           # Show entity/document/approval counts
+python main.py status           # Show entity/document/transaction/approval counts
 python main.py --log-level DEBUG run  # Verbose logging
 
-pytest tests/                   # Run all tests
-pytest tests/test_scanner.py -k "test_ocr"  # Run a single test
+pytest tests/                   # Run all tests (27 tests)
+pytest tests/test_iif_generator.py -v          # Run one test file
+pytest tests/test_approval.py -k "test_cannot" # Run a single test by name
 ```
 
 CLI uses Click; output styled with Rich. All commands auto-initialize the DB if needed (idempotent).
@@ -26,17 +27,19 @@ CLI uses Click; output styled with Rich. All commands auto-initialize the DB if 
 
 ### Event-Driven Pipeline
 
-The system is built around a **synchronous** event bus (`core/events.py`). Modules subscribe to events and emit new ones, forming a processing chain:
+The system is built around a **synchronous** event bus (`core/events.py`). Modules subscribe to events and emit new ones, forming processing chains:
 
+**Phase 1 — Document Processing:**
 ```
 FILE_ARRIVED → OCR_COMPLETE → DOCUMENT_CLASSIFIED → DATA_EXTRACTED → DOCUMENT_FILED
 ```
 
-A scanned PDF triggers this entire chain automatically. Each event carries a `data` dict with `doc_id`, `file_path`, `filename`, and stage-specific fields (e.g., `text`, `confidence`, `document_type`, `extracted_data`).
+**Phase 2 — QuickBooks Integration (user-initiated):**
+```
+User creates transaction via web UI → APPROVAL_REQUESTED → APPROVAL_DECIDED → IIF_GENERATED
+```
 
-Because the bus is synchronous, all handlers run sequentially in the same thread. A slow handler (e.g., Claude API call) blocks subsequent handlers. This is acceptable because documents process one at a time through the pipeline.
-
-Event handlers each open their own `get_session()` — state is **not** shared between handlers. The `doc_id` in event data is the coordination key across stages.
+Each event carries a `data` dict with `doc_id`, `file_path`, `filename`, and stage-specific fields. Because the bus is synchronous, all handlers run sequentially in the same thread. Event handlers each open their own `get_session()` — state is **not** shared between handlers. The `doc_id` in event data is the coordination key across stages.
 
 ### Module Contract
 
@@ -45,7 +48,29 @@ Every module follows the same interface pattern for the `AgentT` orchestrator (`
 - `start()` — begin active work (optional, only ScannerWatcher uses this)
 - `stop()` — clean shutdown (optional)
 
-Modules are registered in `main.py` and wired together through the event bus — they never import each other directly. Registration order doesn't affect event processing (subscriptions are order-independent).
+Modules are registered in `main.py` and wired together through the event bus — they never import each other directly.
+
+### Phase 2: QB Transaction Flow
+
+Transaction creation is **manual** — user clicks "Create Transaction" on a filed document in the web UI. The flow:
+1. Web form pre-fills from `extracted_data` (vendor, date, amount, ref#)
+2. `ExpenseCategorizer` suggests category via vendor mapping table → Claude API fallback
+3. User edits fields, selects IIF type (BILL/CHECK/DEPOSIT), submits
+4. `Transaction` created + `ApprovalRequest` (type=QB_ENTRY) created
+5. User approves in the approval queue → `APPROVAL_DECIDED` event emitted
+6. `IIFGenerator` subscribes to `APPROVAL_DECIDED`, auto-generates IIF file
+7. User downloads IIF, imports into QuickBooks Desktop, marks as synced
+
+Key services are accessed via `request.app.state` in web routes (categorizer, iif_generator, approval_engine, event_bus). These are wired in `main.py` during startup.
+
+Each entity has a **separate QB company file** — IIF files go to `data/exports/iif/{entity_slug}/{YYYY-MM}/`.
+
+### IIF File Format
+
+IIF files are tab-separated with CRLF line endings, UTF-8 without BOM. Every transaction has:
+- `!TRNS` / `!SPL` / `!ENDTRNS` header rows
+- `TRNS` line + `SPL` line(s) that must balance to zero
+- Three types: BILL (AP entry), CHECK (direct payment), DEPOSIT (income)
 
 ### Document Lifecycle
 
@@ -54,15 +79,13 @@ Documents progress through statuses defined in `database/models.py:DocumentStatu
 
 Status transitions are strictly forward — no backwards transitions. ERROR is terminal.
 
-The `Document` model accumulates data at each stage: `ocr_text` and `ocr_confidence` from OCR, `document_type` and `classification_confidence` from classification, `extracted_data` (JSON) from extraction, and `stored_path` + `filed_at` from filing.
-
 ### Multi-Entity Design
 
-Three business entities are defined in `config/entities.py` (generic placeholders; real names are in `fsa_sdrp/`). Every database table that holds business data has an `entity_id` FK to `entities`. Entity resolution happens in two ways:
+Three business entities in `config/entities.py` (generic placeholders; real names are in `fsa_sdrp/`). Every database table that holds business data has an `entity_id` FK. Entity resolution:
 1. Keyword matching in `core/entity_context.py` (fast, for obvious cases)
 2. Claude API classification in `modules/scanner/classifier.py` (for ambiguous documents)
 
-Entity `slug` (e.g., "farm_1") is the primary identifier used in config, file paths (`data/filed/farm_1/...`), event data, and API responses. `Entity.id` is only used for database foreign keys.
+Entity `slug` (e.g., "farm_1") is the primary identifier used in config, file paths, event data, and API responses. `Entity.id` is only used for database foreign keys.
 
 ### OCR Strategy
 
@@ -70,9 +93,7 @@ Entity `slug` (e.g., "farm_1") is the primary identifier used in config, file pa
 1. **Tesseract** (free, local) runs first on all documents
 2. **Claude Vision API** is called as fallback when Tesseract confidence < 60%
 
-If Tesseract fails entirely, Claude Vision is tried as the sole engine.
-
-For PDFs, `pdf2image` converts to images first, then Tesseract OCRs each page. Multi-page PDFs produce text with `--- PAGE BREAK ---` separators. Claude Vision fallback only uses the first page.
+For PDFs, `pdf2image` converts to images first. Multi-page PDFs produce text with `--- PAGE BREAK ---` separators. Claude Vision fallback only uses the first page.
 
 ### Document Filing
 
@@ -80,11 +101,7 @@ For PDFs, `pdf2image` converts to images first, then Tesseract OCRs each page. M
 ```
 data/filed/{entity_slug}/{document_type}/{YYYY-MM}/{filename}
 ```
-Originals stay in `data/scanned/` so documents can be re-processed. Filename collisions append `_1`, `_2`, etc.
-
-### Claude API Usage
-
-Classification and extraction prompts truncate document text to **8000 characters** to control costs and fit context windows. No rate limiting is currently implemented.
+Originals stay in `data/scanned/` so documents can be re-processed.
 
 ### Database
 
@@ -92,23 +109,30 @@ SQLite via SQLAlchemy 2.0 with `DeclarativeBase`. Two session patterns:
 - `get_session()` — context manager for CLI/module code
 - `get_db_session()` — generator for FastAPI `Depends()` injection
 
-All models are in `database/models.py` (6 tables, 8 enums). Flexible data uses JSON columns (`extracted_data`, `line_items`, `data_payload`). No migrations yet (uses `create_all()`).
+**Important:** Entity and other ORM objects become detached after `get_session()` closes. Extract scalar data (name, slug, etc.) inside the session block before using outside it.
+
+All models are in `database/models.py` (7 tables, 11 enums). Flexible data uses JSON columns (`extracted_data`, `line_items`, `data_payload`). No migrations yet (uses `create_all()`).
 
 ### Web Dashboard
 
-FastAPI + Jinja2 templates + HTMX (loaded from CDN, no build step). All routes are in `web/app.py`. Binds to `127.0.0.1:8080` by default. Templates are in `web/templates/` and extend `base.html`. Dark theme via inline CSS custom properties. No authentication (localhost-only, single-user).
+FastAPI + Jinja2 templates + HTMX (loaded from CDN, no build step). All routes are in `web/app.py`. Binds to `127.0.0.1:8080` by default. Templates extend `base.html`. Dark theme via inline CSS custom properties. No authentication (localhost-only, single-user).
+
+### Expense Categorization
+
+`modules/quickbooks/categorizer.py` — `ExpenseCategorizer` is called as a service (not an event handler):
+1. Checks `vendor_mappings` DB table via `config/qb_accounts.py:get_category_for_vendor()`
+2. Falls back to Claude API with all Schedule F categories in the prompt
+3. Vendor-to-category mappings can be learned via `learn_vendor()` or the web UI
+
+`config/qb_accounts.py` contains QB account name mappings for all 34 Schedule F categories (24 expense + 10 income) and 36 seeded vendor defaults.
 
 ### Audit Logging
 
-`core/audit.py:log_action()` writes to both the `audit_log` database table and `logs/audit.log` file. Dual-write is intentional redundancy — DB is queryable, file is immutable backup. Every module action should call this. Append-only by design (7-year IRS retention).
+`core/audit.py:log_action()` writes to both the `audit_log` database table and `logs/audit.log` file. Dual-write is intentional redundancy — DB is queryable, file is immutable backup. Append-only by design (7-year IRS retention).
 
 ### Error Handling
 
 Modules catch exceptions and emit `ERROR_OCCURRED` events. The agent subscribes to these and logs to audit trail. Documents get `DocumentStatus.ERROR` with `error_message`. Processing continues for other documents (no cascading failures).
-
-### Scanner Watcher
-
-`ScannerWatcher` waits **2 seconds** after file creation before emitting `FILE_ARRIVED`. This delay lets the scanner hardware finish writing the file.
 
 ## Key Dependencies
 
@@ -125,14 +149,25 @@ Modules catch exceptions and emit `ERROR_OCCURRED` events. The agent subscribes 
 ## Configuration
 
 All config loads from `.env` via `config/settings.py`. Key variables:
-- `ANTHROPIC_API_KEY` — required for classification/extraction
+- `ANTHROPIC_API_KEY` — required for classification/extraction/categorization
 - `SCANNER_WATCH_DIR` — where the physical scanner saves PDFs
-- `CLASSIFICATION_MODEL` / `EXTRACTION_MODEL` — Claude model IDs
+- `CLASSIFICATION_MODEL` / `EXTRACTION_MODEL` / `CATEGORIZATION_MODEL` — Claude model IDs
 - `TESSERACT_CMD` — path to Tesseract binary (leave empty to use PATH)
 
-`settings.py` auto-creates all data directories on import.
+`settings.py` auto-creates all data directories on import (including `IIF_OUTPUT_DIR`).
 
-Entity definitions (names, types, states, keywords, crops) are in `config/entities.py`, along with Schedule F expense/income categories (24 expense + 10 income) reused from `tax_assistant`.
+Entity definitions (names, types, states, keywords, crops) are in `config/entities.py`, along with Schedule F expense/income categories (24 expense + 10 income).
+
+## Testing
+
+Tests use in-memory SQLite databases with mock `get_session` pattern:
+```python
+with patch("module.path.get_session") as mock_gs:
+    mock_gs.return_value.__enter__ = lambda s: db_session
+    mock_gs.return_value.__exit__ = MagicMock(return_value=False)
+```
+
+`datetime.utcnow()` deprecation warnings from SQLAlchemy model defaults are known and non-critical.
 
 ## Related Projects
 
@@ -142,8 +177,7 @@ Entity definitions (names, types, states, keywords, crops) are in `config/entiti
 
 ## Planned Phases
 
-Phase 1 (foundation + scanner) is complete. Upcoming:
-- **Phase 2**: QuickBooks IIF file generation + expense categorization + approval workflow
+Phases 1 and 2 are complete. Upcoming:
 - **Phase 3**: Billing & invoice generation
 - **Phase 4**: Dashboard polish + APScheduler task automation
 - **Phase 5**: FSA/USDA crop reporting module
