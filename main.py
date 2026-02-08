@@ -65,6 +65,7 @@ def run():
     from modules.documents.manager import DocumentManager
     from modules.quickbooks.categorizer import ExpenseCategorizer
     from modules.quickbooks.iif_generator import IIFGenerator
+    from modules.billing.invoice_generator import InvoiceGenerator
     from core.approval import ApprovalEngine
     from config.settings import WEB_HOST, WEB_PORT, SCANNER_WATCH_DIR
 
@@ -95,6 +96,10 @@ def run():
     agent.register_module("iif_generator", iif_generator)
     agent.register_module("approval_engine", approval_engine)
 
+    # Phase 3 modules
+    invoice_generator = InvoiceGenerator()
+    agent.register_module("invoice_generator", invoice_generator)
+
     agent.start()
     console.print(f"[green]Scanner watching:[/green] {SCANNER_WATCH_DIR}")
     console.print(f"[green]Dashboard:[/green] http://{WEB_HOST}:{WEB_PORT}")
@@ -108,6 +113,7 @@ def run():
     app.state.categorizer = categorizer
     app.state.iif_generator = iif_generator
     app.state.approval_engine = approval_engine
+    app.state.invoice_generator = invoice_generator
 
     server_thread = threading.Thread(
         target=uvicorn.run,
@@ -134,6 +140,7 @@ def web():
     from core.events import EventBus
     from modules.quickbooks.categorizer import ExpenseCategorizer
     from modules.quickbooks.iif_generator import IIFGenerator
+    from modules.billing.invoice_generator import InvoiceGenerator
     from core.approval import ApprovalEngine
 
     _init_db()
@@ -148,6 +155,8 @@ def web():
     iif_generator.setup(event_bus)
     approval_engine = ApprovalEngine()
     approval_engine.setup(event_bus)
+    invoice_generator = InvoiceGenerator()
+    invoice_generator.setup(event_bus)
 
     import uvicorn
     from web.app import app
@@ -156,6 +165,7 @@ def web():
     app.state.categorizer = categorizer
     app.state.iif_generator = iif_generator
     app.state.approval_engine = approval_engine
+    app.state.invoice_generator = invoice_generator
 
     uvicorn.run(app, host=WEB_HOST, port=WEB_PORT)
 
@@ -171,6 +181,7 @@ def scan():
     from modules.documents.manager import DocumentManager
     from modules.quickbooks.categorizer import ExpenseCategorizer
     from modules.quickbooks.iif_generator import IIFGenerator
+    from modules.billing.invoice_generator import InvoiceGenerator
     from core.approval import ApprovalEngine
     from config.settings import SCANNER_WATCH_DIR
 
@@ -197,6 +208,10 @@ def scan():
     agent.register_module("iif_generator", iif_generator)
     agent.register_module("approval_engine", approval_engine)
 
+    # Phase 3 modules
+    invoice_generator = InvoiceGenerator()
+    agent.register_module("invoice_generator", invoice_generator)
+
     agent.start()
     console.print(f"[green]Scanner watching:[/green] {SCANNER_WATCH_DIR}")
     console.print("[bold green]Scanner running. Press Ctrl+C to stop.[/bold green]")
@@ -215,8 +230,8 @@ def status():
     """Show current system status."""
     from database.db import get_session
     from database.models import (
-        Document, Entity, ApprovalRequest, Transaction,
-        DocumentStatus, ApprovalStatus, QBSyncStatus,
+        Document, Entity, ApprovalRequest, Transaction, Invoice,
+        DocumentStatus, ApprovalStatus, QBSyncStatus, InvoiceStatus,
     )
 
     with get_session() as session:
@@ -232,6 +247,12 @@ def status():
         iif_generated = session.query(Transaction).filter(Transaction.qb_sync_status == QBSyncStatus.IIF_GENERATED).count()
         synced_txns = session.query(Transaction).filter(Transaction.qb_sync_status == QBSyncStatus.SYNCED).count()
 
+        total_invoices = session.query(Invoice).count()
+        draft_invoices = session.query(Invoice).filter(Invoice.status == InvoiceStatus.DRAFT).count()
+        sent_invoices = session.query(Invoice).filter(Invoice.status == InvoiceStatus.SENT).count()
+        paid_invoices = session.query(Invoice).filter(Invoice.status == InvoiceStatus.PAID).count()
+        overdue_invoices = session.query(Invoice).filter(Invoice.status == InvoiceStatus.OVERDUE).count()
+
     console.print("\n[bold]AgentT Status[/bold]")
     console.print(f"  Entities:          {len(entity_info)}")
     for name, etype, state in entity_info:
@@ -246,6 +267,13 @@ def status():
     console.print(f"  Pending QB:        [yellow]{pending_txns}[/yellow]")
     console.print(f"  IIF Generated:     [blue]{iif_generated}[/blue]")
     console.print(f"  Synced:            [green]{synced_txns}[/green]")
+    console.print()
+    console.print("[bold]Invoices[/bold]")
+    console.print(f"  Total:             {total_invoices}")
+    console.print(f"  Draft:             {draft_invoices}")
+    console.print(f"  Sent:              [blue]{sent_invoices}[/blue]")
+    console.print(f"  Paid:              [green]{paid_invoices}[/green]")
+    console.print(f"  Overdue:           [red]{overdue_invoices}[/red]")
     console.print()
 
 

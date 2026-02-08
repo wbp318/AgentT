@@ -20,6 +20,12 @@ def seed_entities(session: Session):
     for slug, cfg in ENTITIES.items():
         existing = session.query(Entity).filter_by(slug=slug).first()
         if existing:
+            # Update branding fields on existing entities (idempotent)
+            existing.address = cfg.get("address", "")
+            existing.phone = cfg.get("phone", "")
+            existing.email = cfg.get("email", "")
+            existing.invoice_prefix = cfg.get("invoice_prefix", "")
+            logger.info(f"Updated branding for entity: {cfg['name']} ({slug})")
             continue
 
         entity = Entity(
@@ -28,6 +34,10 @@ def seed_entities(session: Session):
             entity_type=EntityType(cfg["entity_type"]),
             state=cfg["state"],
             accounting_method=AccountingMethod(cfg["accounting_method"]),
+            address=cfg.get("address", ""),
+            phone=cfg.get("phone", ""),
+            email=cfg.get("email", ""),
+            invoice_prefix=cfg.get("invoice_prefix", ""),
         )
         session.add(entity)
         logger.info(f"Seeded entity: {cfg['name']} ({slug})")

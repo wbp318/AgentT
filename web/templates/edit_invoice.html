@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title_extra %} — Edit Invoice {{ inv.invoice_number }}{% endblock %}
+
+{% block content %}
+<h2 style="margin-bottom: 1.5rem;">Edit Invoice {{ inv.invoice_number }}</h2>
+
+<form method="POST" action="/invoices/{{ inv.id }}/edit" id="invoice-form">
+    <div class="card">
+        <h2>Invoice Details</h2>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Entity</label>
+                <input type="text" value="{{ inv.entity_name }}" disabled>
+            </div>
+            <div class="form-group">
+                <label>Due Date</label>
+                <input type="date" name="date_due" value="{{ inv.date_due.strftime('%Y-%m-%d') if inv.date_due else '' }}" required>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Customer Name</label>
+                <input type="text" name="customer_name" value="{{ inv.customer_name }}" required>
+            </div>
+            <div class="form-group">
+                <label>Customer Address</label>
+                <textarea name="customer_address" rows="2">{{ inv.customer_address or '' }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Line Items</h2>
+        <div id="line-items">
+            {% for item in inv.line_items %}
+            <div class="line-item" data-index="{{ loop.index0 }}">
+                <div style="display: grid; grid-template-columns: 3fr 1fr 1fr auto; gap: 0.75rem; align-items: end; margin-bottom: 0.75rem;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Description</label>
+                        <input type="text" name="item_description_{{ loop.index0 }}" value="{{ item.description }}" required>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Quantity</label>
+                        <input type="number" name="item_quantity_{{ loop.index0 }}" step="0.01" min="0" value="{{ item.quantity }}" required>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Unit Price</label>
+                        <input type="number" name="item_unit_price_{{ loop.index0 }}" step="0.01" min="0" value="{{ item.unit_price }}" required>
+                    </div>
+                    <button type="button" class="btn btn-danger btn-sm remove-item" onclick="removeItem(this)" style="margin-bottom: 0.1rem;" title="Remove">&times;</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <button type="button" class="btn" onclick="addItem()">+ Add Line Item</button>
+    </div>
+
+    <div class="card">
+        <div class="form-group">
+            <label>Notes (optional)</label>
+            <textarea name="notes" rows="3">{{ inv.notes or '' }}</textarea>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 0.75rem;">
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+        <a href="/invoices/{{ inv.id }}" class="btn">Cancel</a>
+    </div>
+</form>
+
+<script>
+let itemIndex = {{ inv.line_items|length }};
+
+function addItem() {
+    const container = document.getElementById('line-items');
+    const div = document.createElement('div');
+    div.className = 'line-item';
+    div.dataset.index = itemIndex;
+    div.innerHTML = `
+        <div style="display: grid; grid-template-columns: 3fr 1fr 1fr auto; gap: 0.75rem; align-items: end; margin-bottom: 0.75rem;">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label>Description</label>
+                <input type="text" name="item_description_${itemIndex}" required placeholder="Service or product">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label>Quantity</label>
+                <input type="number" name="item_quantity_${itemIndex}" step="0.01" min="0" value="1" required>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label>Unit Price</label>
+                <input type="number" name="item_unit_price_${itemIndex}" step="0.01" min="0" required placeholder="0.00">
+            </div>
+            <button type="button" class="btn btn-danger btn-sm remove-item" onclick="removeItem(this)" style="margin-bottom: 0.1rem;" title="Remove">&times;</button>
+        </div>
+    `;
+    container.appendChild(div);
+    itemIndex++;
+}
+
+function removeItem(btn) {
+    const items = document.querySelectorAll('.line-item');
+    if (items.length > 1) {
+        btn.closest('.line-item').remove();
+    }
+}
+</script>
+{% endblock %}

@@ -38,7 +38,57 @@
         <div class="label">Synced</div>
         <div class="value success">{{ stats.synced_transactions }}</div>
     </div>
+    <div class="stat-card">
+        <div class="label">Invoices</div>
+        <div class="value">{{ stats.total_invoices }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Invoice Drafts</div>
+        <div class="value" style="color: var(--text-muted);">{{ stats.draft_invoices }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Outstanding $</div>
+        <div class="value {% if stats.outstanding_amount > 0 %}warning{% endif %}">${{ "%.0f"|format(stats.outstanding_amount) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Overdue</div>
+        <div class="value {% if stats.overdue_invoices > 0 %}danger{% endif %}">{{ stats.overdue_invoices }}</div>
+    </div>
 </div>
+
+{% if overdue_invoices %}
+<div class="card" style="border-color: var(--danger);">
+    <h2 style="color: var(--danger);">Overdue Invoices</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Invoice #</th>
+                <th>Customer</th>
+                <th>Balance Due</th>
+                <th>Due Date</th>
+                <th>Days Overdue</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for inv in overdue_invoices %}
+            <tr>
+                <td><a href="/invoices/{{ inv.id }}">{{ inv.invoice_number }}</a></td>
+                <td>{{ inv.customer_name }}</td>
+                <td>${{ "%.2f"|format(inv.balance_due) }}</td>
+                <td>{{ inv.date_due.strftime('%Y-%m-%d') if inv.date_due else '—' }}</td>
+                <td style="color: var(--danger);">{{ inv.days_overdue }}</td>
+                <td>
+                    <form method="POST" action="/invoices/{{ inv.id }}/reminder" style="display:inline;">
+                        <button type="submit" class="btn btn-danger btn-sm">Generate Reminder</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
 
 <div class="card">
     <h2>Recent Documents</h2>

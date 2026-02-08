@@ -11,6 +11,10 @@ ENTITIES = {
         "accounting_method": "cash",
         "crops": ["corn", "soybeans", "cotton"],
         "filing_keywords": [],  # Keywords in documents that identify this entity
+        "address": "689 Lensing Ln, Lake Providence, LA 71254-5404",
+        "phone": "(318) 559-2020",
+        "email": "tap@pfpartnership.com",
+        "invoice_prefix": "PFP",
     },
     "farm_2": {
         "name": "Farm Entity 2",
@@ -19,6 +23,10 @@ ENTITIES = {
         "accounting_method": "cash",
         "crops": ["corn", "soybeans"],
         "filing_keywords": [],
+        "address": "689 Lensing Ln, Lake Providence, LA 71254-5404",
+        "phone": "(318) 282-6499",
+        "email": "nolan@pfpartnership.com",
+        "invoice_prefix": "NGF",
     },
     "ga_real_estate": {
         "name": "GA Real Estate",
@@ -27,6 +35,10 @@ ENTITIES = {
         "accounting_method": "accrual",
         "crops": [],
         "filing_keywords": ["georgia", "GA"],
+        "address": "689 Lensing Ln, Lake Providence, LA 71254",
+        "phone": "",
+        "email": "",
+        "invoice_prefix": "WCO",
     },
 }
 

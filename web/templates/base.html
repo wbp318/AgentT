@@ -181,6 +181,11 @@
         .badge.synced { background: #16532820; color: var(--success); border: 1px solid #16532850; }
         .badge.approved { background: #16532820; color: var(--success); border: 1px solid #16532850; }
         .badge.rejected { background: #7f1d1d20; color: var(--danger); border: 1px solid #7f1d1d50; }
+        .badge.draft { background: #334155; color: var(--text-muted); border: 1px solid #475569; }
+        .badge.sent { background: #1e3a5f20; color: var(--accent); border: 1px solid #1e3a5f50; }
+        .badge.paid { background: #16532820; color: var(--success); border: 1px solid #16532850; }
+        .badge.overdue { background: #7f1d1d20; color: var(--danger); border: 1px solid #7f1d1d50; }
+        .badge.void { background: #334155; color: #64748b; border: 1px solid #475569; }
 
         .actions { display: flex; gap: 0.5rem; align-items: center; }
         .flash { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
@@ -194,6 +199,7 @@
         <nav>
             <a href="/" {% if request.url.path == "/" %}class="active"{% endif %}>Dashboard</a>
             <a href="/documents" {% if "/documents" in request.url.path and "/create-transaction" not in request.url.path %}class="active"{% endif %}>Documents</a>
+            <a href="/invoices" {% if "/invoices" in request.url.path %}class="active"{% endif %}>Invoices</a>
             <a href="/transactions" {% if "/transactions" in request.url.path %}class="active"{% endif %}>Transactions</a>
             <a href="/approvals" {% if "/approvals" in request.url.path %}class="active"{% endif %}>Approvals</a>
             <a href="/vendors" {% if "/vendors" in request.url.path %}class="active"{% endif %}>Vendors</a>

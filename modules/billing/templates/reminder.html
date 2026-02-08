@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @page {
+            size: letter;
+            margin: 1in;
+        }
+
+        body {
+            font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+            color: #1a1a1a;
+            font-size: 11pt;
+            line-height: 1.6;
+            background: #fff;
+        }
+
+        .letterhead {
+            margin-bottom: 2rem;
+            border-bottom: 2px solid #2563eb;
+            padding-bottom: 1rem;
+        }
+
+        .letterhead h1 {
+            font-size: 18pt;
+            color: #2563eb;
+            margin: 0 0 0.25rem 0;
+        }
+
+        .letterhead p {
+            margin: 0;
+            font-size: 9pt;
+            color: #555;
+        }
+
+        .notice-header {
+            text-align: center;
+            margin: 2rem 0;
+            padding: 1rem;
+            border: 2px solid #dc2626;
+            background: #fef2f2;
+        }
+
+        .notice-header h2 {
+            color: #dc2626;
+            font-size: 18pt;
+            margin: 0;
+            letter-spacing: 3px;
+        }
+
+        .date-line {
+            margin-bottom: 2rem;
+            font-size: 10pt;
+            color: #555;
+        }
+
+        .customer-block {
+            margin-bottom: 2rem;
+            white-space: pre-line;
+        }
+
+        .body-text {
+            margin-bottom: 1.5rem;
+            font-size: 10.5pt;
+        }
+
+        .details-table {
+            width: 60%;
+            margin: 1.5rem 0;
+            border-collapse: collapse;
+        }
+
+        .details-table td {
+            padding: 0.4rem 0.75rem;
+            font-size: 10.5pt;
+        }
+
+        .details-table td:first-child {
+            font-weight: 600;
+            color: #555;
+            width: 40%;
+        }
+
+        .details-table tr.highlight td {
+            font-weight: 700;
+            font-size: 12pt;
+            color: #dc2626;
+            border-top: 1px solid #ddd;
+            padding-top: 0.75rem;
+        }
+
+        .closing {
+            margin-top: 2.5rem;
+            font-size: 10.5pt;
+        }
+
+        .signature {
+            margin-top: 2rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="letterhead">
+    <h1>{{ entity.name }}</h1>
+    <p>{{ entity.address or '' }}</p>
+    {% if entity.phone %}<p>{{ entity.phone }}</p>{% endif %}
+    {% if entity.email %}<p>{{ entity.email }}</p>{% endif %}
+</div>
+
+<div class="notice-header">
+    <h2>PAST DUE NOTICE</h2>
+</div>
+
+<div class="date-line">{{ now().strftime('%B %d, %Y') if now is defined else '' }}</div>
+
+<div class="customer-block">{{ invoice.customer_name }}
+{{ invoice.customer_address or '' }}</div>
+
+<div class="body-text">
+    <p>Dear {{ invoice.customer_name }},</p>
+
+    <p>Our records indicate that the following invoice remains unpaid and is now
+    <strong>{{ days_overdue }} days past due</strong>. This is reminder #{{ reminder_number }}.</p>
+</div>
+
+<table class="details-table">
+    <tr>
+        <td>Invoice Number</td>
+        <td>{{ invoice.invoice_number }}</td>
+    </tr>
+    <tr>
+        <td>Date Issued</td>
+        <td>{{ invoice.date_issued.strftime('%B %d, %Y') if invoice.date_issued else '' }}</td>
+    </tr>
+    <tr>
+        <td>Date Due</td>
+        <td>{{ invoice.date_due.strftime('%B %d, %Y') if invoice.date_due else '' }}</td>
+    </tr>
+    <tr>
+        <td>Original Amount</td>
+        <td>${{ "%.2f"|format(invoice.total_amount) }}</td>
+    </tr>
+    {% if invoice.amount_paid and invoice.amount_paid > 0 %}
+    <tr>
+        <td>Amount Paid</td>
+        <td>${{ "%.2f"|format(invoice.amount_paid) }}</td>
+    </tr>
+    {% endif %}
+    <tr class="highlight">
+        <td>Balance Due</td>
+        <td>${{ "%.2f"|format(invoice.balance_due) }}</td>
+    </tr>
+</table>
+
+<div class="body-text">
+    <p>Please remit payment at your earliest convenience. If payment has already been sent,
+    please disregard this notice and accept our thanks.</p>
+
+    <p>If you have questions regarding this invoice, please contact us at
+    {% if entity.phone %}{{ entity.phone }}{% endif %}
+    {% if entity.phone and entity.email %} or {% endif %}
+    {% if entity.email %}{{ entity.email }}{% endif %}.</p>
+</div>
+
+<div class="closing">
+    <p>Sincerely,</p>
+    <div class="signature">
+        <p><strong>{{ entity.name }}</strong></p>
+    </div>
+</div>
+
+</body>
+</html>

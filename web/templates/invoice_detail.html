@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title_extra %} — Invoice {{ inv.invoice_number }}{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div>
+        <h2>Invoice {{ inv.invoice_number }}</h2>
+        <span class="badge {{ inv.status }}" style="margin-top: 0.5rem;">{{ inv.status }}</span>
+    </div>
+    <div class="actions">
+        {% if inv.status == 'draft' %}
+        <a href="/invoices/{{ inv.id }}/edit" class="btn">Edit</a>
+        <form method="POST" action="/invoices/{{ inv.id }}/send" style="display:inline;">
+            <button type="submit" class="btn btn-primary">Mark Sent</button>
+        </form>
+        {% endif %}
+
+        <a href="/invoices/{{ inv.id }}/pdf" class="btn" target="_blank">Download PDF</a>
+
+        {% if inv.status in ('sent', 'overdue') %}
+        <form method="POST" action="/invoices/{{ inv.id }}/reminder" style="display:inline;">
+            <button type="submit" class="btn btn-danger">Generate Reminder</button>
+        </form>
+        {% endif %}
+
+        {% if inv.status not in ('paid', 'void') %}
+        <form method="POST" action="/invoices/{{ inv.id }}/void" style="display:inline;"
+              onsubmit="return confirm('Are you sure you want to void this invoice?')">
+            <input type="hidden" name="reason" value="Voided via web UI">
+            <button type="submit" class="btn btn-danger">Void</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <h2>Details</h2>
+    <div class="form-row" style="margin-bottom: 1rem;">
+        <div>
+            <div style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; margin-bottom: 0.2rem;">Entity</div>
+            <div>{{ inv.entity_name }}</div>
+        </div>
+        <div>
+            <div style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; margin-bottom: 0.2rem;">Invoice Number</div>
+            <div>{{ inv.invoice_number }}</div>
+        </div>
+    </div>
+    <div class="form-row" style="margin-bottom: 1rem;">
+        <div>
+            <div style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; margin-bottom: 0.2rem;">Customer</div>
+            <div>{{ inv.customer_name }}</div>
+            {% if inv.customer_address %}
+            <div style="color: var(--text-muted); font-size: 0.85rem; white-space: pre-line;">{{ inv.customer_address }}</div>
+            {% endif %}
+        </div>
+        <div>
+            <div style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; margin-bottom: 0.2rem;">Date Issued</div>
+            <div>{{ inv.date_issued.strftime('%Y-%m-%d') if inv.date_issued else '—' }}</div>
+            <div style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; margin-bottom: 0.2rem; margin-top: 0.5rem;">Date Due</div>
+            <div>{{ inv.date_due.strftime('%Y-%m-%d') if inv.date_due else '—' }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Line Items</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Description</th>
+                <th style="text-align: right;">Qty</th>
+                <th style="text-align: right;">Unit Price</th>
+                <th style="text-align: right;">Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in inv.line_items %}
+            <tr>
+                <td>{{ item.description }}</td>
+                <td style="text-align: right;">{{ item.quantity }}</td>
+                <td style="text-align: right;">${{ "%.2f"|format(item.unit_price|float) }}</td>
+                <td style="text-align: right;">${{ "%.2f"|format(item.amount|float) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="3" style="text-align: right; font-weight: 700;">Total</td>
+                <td style="text-align: right; font-weight: 700;">${{ "%.2f"|format(inv.total_amount) }}</td>
+            </tr>
+            <tr>
+                <td colspan="3" style="text-align: right; color: var(--success);">Paid</td>
+                <td style="text-align: right; color: var(--success);">${{ "%.2f"|format(inv.amount_paid) }}</td>
+            </tr>
+            <tr>
+                <td colspan="3" style="text-align: right; font-weight: 700; font-size: 1.1rem;">Balance Due</td>
+                <td style="text-align: right; font-weight: 700; font-size: 1.1rem;
+                    {% if inv.balance_due > 0 %}color: var(--warning);{% else %}color: var(--success);{% endif %}">
+                    ${{ "%.2f"|format(inv.balance_due) }}
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+
+{% if inv.notes %}
+<div class="card">
+    <h2>Notes</h2>
+    <p style="white-space: pre-line;">{{ inv.notes }}</p>
+</div>
+{% endif %}
+
+{% if inv.status in ('sent', 'overdue') %}
+<div class="card">
+    <h2>Record Payment</h2>
+    <form method="POST" action="/invoices/{{ inv.id }}/payment">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Amount</label>
+                <input type="number" name="payment_amount" step="0.01" min="0.01"
+                       max="{{ inv.balance_due }}" value="{{ inv.balance_due }}" required>
+            </div>
+            <div class="form-group">
+                <label>Payment Date</label>
+                <input type="date" name="payment_date">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Notes (optional)</label>
+            <input type="text" name="payment_notes" placeholder="Check #, reference, etc.">
+        </div>
+        <button type="submit" class="btn btn-success">Record Payment</button>
+    </form>
+</div>
+{% endif %}
+
+{% if inv.reminder_count > 0 %}
+<div class="card">
+    <h2>Reminders</h2>
+    <p>{{ inv.reminder_count }} reminder(s) sent.</p>
+</div>
+{% endif %}
+
+<div style="margin-top: 1rem;">
+    <a href="/invoices">&larr; Back to Invoices</a>
+</div>
+{% endblock %}

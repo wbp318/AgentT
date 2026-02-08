@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @page {
+            size: letter;
+            margin: 0.75in;
+        }
+
+        body {
+            font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+            color: #1a1a1a;
+            font-size: 11pt;
+            line-height: 1.5;
+            background: #fff;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid #2563eb;
+            padding-bottom: 1rem;
+        }
+
+        .entity-info h1 {
+            font-size: 18pt;
+            color: #2563eb;
+            margin: 0 0 0.25rem 0;
+        }
+
+        .entity-info p {
+            margin: 0;
+            font-size: 9pt;
+            color: #555;
+        }
+
+        .invoice-title {
+            text-align: right;
+        }
+
+        .invoice-title h2 {
+            font-size: 24pt;
+            color: #1a1a1a;
+            margin: 0;
+            letter-spacing: 2px;
+        }
+
+        .invoice-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+        }
+
+        .invoice-meta .block {
+            width: 48%;
+        }
+
+        .invoice-meta .label {
+            font-size: 8pt;
+            text-transform: uppercase;
+            color: #888;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 0.2rem;
+        }
+
+        .invoice-meta .value {
+            font-size: 10pt;
+            margin-bottom: 0.75rem;
+            white-space: pre-line;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1.5rem;
+        }
+
+        thead th {
+            background: #2563eb;
+            color: #fff;
+            padding: 0.6rem 0.75rem;
+            text-align: left;
+            font-size: 9pt;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        thead th:last-child {
+            text-align: right;
+        }
+
+        thead th.qty, thead th.price {
+            text-align: right;
+        }
+
+        tbody td {
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid #e5e5e5;
+            font-size: 10pt;
+        }
+
+        tbody td.qty, tbody td.price, tbody td.amount {
+            text-align: right;
+        }
+
+        .totals {
+            float: right;
+            width: 250px;
+        }
+
+        .totals table {
+            margin-bottom: 0;
+        }
+
+        .totals td {
+            padding: 0.4rem 0.75rem;
+            border: none;
+            font-size: 10pt;
+        }
+
+        .totals td:last-child {
+            text-align: right;
+            font-weight: 600;
+        }
+
+        .totals tr.total-row td {
+            border-top: 2px solid #2563eb;
+            font-size: 12pt;
+            font-weight: 700;
+            color: #2563eb;
+            padding-top: 0.5rem;
+        }
+
+        .notes {
+            clear: both;
+            margin-top: 3rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e5e5e5;
+        }
+
+        .notes h3 {
+            font-size: 9pt;
+            text-transform: uppercase;
+            color: #888;
+            margin-bottom: 0.3rem;
+        }
+
+        .notes p {
+            font-size: 9pt;
+            color: #555;
+        }
+
+        .footer {
+            margin-top: 3rem;
+            text-align: center;
+            font-size: 8pt;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="entity-info">
+        <h1>{{ entity.name }}</h1>
+        <p>{{ entity.address or '' }}</p>
+        {% if entity.phone %}<p>{{ entity.phone }}</p>{% endif %}
+        {% if entity.email %}<p>{{ entity.email }}</p>{% endif %}
+    </div>
+    <div class="invoice-title">
+        <h2>INVOICE</h2>
+    </div>
+</div>
+
+<div class="invoice-meta">
+    <div class="block">
+        <div class="label">Bill To</div>
+        <div class="value">{{ invoice.customer_name }}
+{{ invoice.customer_address or '' }}</div>
+    </div>
+    <div class="block" style="text-align: right;">
+        <div class="label">Invoice Number</div>
+        <div class="value">{{ invoice.invoice_number }}</div>
+
+        <div class="label">Date Issued</div>
+        <div class="value">{{ invoice.date_issued.strftime('%B %d, %Y') if invoice.date_issued else '' }}</div>
+
+        <div class="label">Date Due</div>
+        <div class="value">{{ invoice.date_due.strftime('%B %d, %Y') if invoice.date_due else '' }}</div>
+    </div>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th style="width: 50%;">Description</th>
+            <th class="qty" style="width: 15%;">Quantity</th>
+            <th class="price" style="width: 17%;">Unit Price</th>
+            <th style="width: 18%; text-align: right;">Amount</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in line_items %}
+        <tr>
+            <td>{{ item.description }}</td>
+            <td class="qty">{{ item.quantity }}</td>
+            <td class="price">${{ "%.2f"|format(item.unit_price|float) }}</td>
+            <td class="amount">${{ "%.2f"|format(item.amount|float) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="totals">
+    <table>
+        <tr>
+            <td>Subtotal</td>
+            <td>${{ "%.2f"|format(invoice.total_amount) }}</td>
+        </tr>
+        {% if invoice.amount_paid and invoice.amount_paid > 0 %}
+        <tr>
+            <td>Paid</td>
+            <td>(${{ "%.2f"|format(invoice.amount_paid) }})</td>
+        </tr>
+        {% endif %}
+        <tr class="total-row">
+            <td>Balance Due</td>
+            <td>${{ "%.2f"|format(invoice.balance_due) }}</td>
+        </tr>
+    </table>
+</div>
+
+{% if invoice.notes %}
+<div class="notes">
+    <h3>Notes</h3>
+    <p>{{ invoice.notes }}</p>
+</div>
+{% endif %}
+
+<div class="footer">
+    <p>Thank you for your business.</p>
+</div>
+
+</body>
+</html>

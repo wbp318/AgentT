@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title_extra %} — Invoices{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <h2>Invoices</h2>
+    <a href="/invoices/create" class="btn btn-primary">New Invoice</a>
+</div>
+
+{% if invoices %}
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Invoice #</th>
+                <th>Entity</th>
+                <th>Customer</th>
+                <th>Total</th>
+                <th>Balance Due</th>
+                <th>Due Date</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for inv in invoices %}
+            <tr{% if inv.status.value == 'overdue' %} style="background: #7f1d1d10;"{% endif %}>
+                <td><a href="/invoices/{{ inv.id }}">{{ inv.invoice_number }}</a></td>
+                <td>{{ inv.entity_name }}</td>
+                <td>{{ inv.customer_name }}</td>
+                <td>${{ "%.2f"|format(inv.total_amount) }}</td>
+                <td>${{ "%.2f"|format(inv.balance_due) }}</td>
+                <td>{{ inv.date_due.strftime('%Y-%m-%d') if inv.date_due else '—' }}</td>
+                <td><span class="badge {{ inv.status.value }}">{{ inv.status.value }}</span></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card">
+    <p class="empty">No invoices yet. Click "New Invoice" to create one.</p>
+</div>
+{% endif %}
+{% endblock %}

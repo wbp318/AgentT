@@ -15,9 +15,9 @@ from sqlalchemy.orm import Session
 
 from database.db import get_db_session
 from database.models import (
-    Document, Entity, ApprovalRequest, AuditLog, Transaction, VendorMapping,
+    Document, Entity, ApprovalRequest, AuditLog, Transaction, VendorMapping, Invoice,
     DocumentStatus, ApprovalStatus, TransactionType, IIFType, QBSyncStatus,
-    ApprovalType,
+    ApprovalType, InvoiceStatus,
 )
 from config.entities import FARM_EXPENSE_CATEGORIES, FARM_INCOME_CATEGORIES
 from config.qb_accounts import get_qb_account
@@ -63,6 +63,19 @@ async def dashboard(request: Request, db: Session = Depends(get_db_session)):
         Transaction.qb_sync_status == QBSyncStatus.SYNCED
     ).count()
 
+    # Invoice stats
+    total_invoices = db.query(Invoice).count()
+    draft_invoices = db.query(Invoice).filter(Invoice.status == InvoiceStatus.DRAFT).count()
+    overdue_invoices_count = db.query(Invoice).filter(Invoice.status == InvoiceStatus.OVERDUE).count()
+
+    from sqlalchemy import func
+    outstanding_result = (
+        db.query(func.coalesce(func.sum(Invoice.total_amount - Invoice.amount_paid), 0))
+        .filter(Invoice.status.in_([InvoiceStatus.SENT, InvoiceStatus.OVERDUE]))
+        .scalar()
+    )
+    outstanding_amount = float(outstanding_result or 0)
+
     stats = {
         "total_documents": db.query(Document).count(),
         "pending_documents": db.query(Document).filter(
@@ -75,6 +88,10 @@ async def dashboard(request: Request, db: Session = Depends(get_db_session)):
         "pending_transactions": pending_txns,
         "iif_ready": iif_ready_txns,
         "synced_transactions": synced_txns,
+        "total_invoices": total_invoices,
+        "draft_invoices": draft_invoices,
+        "outstanding_amount": outstanding_amount,
+        "overdue_invoices": overdue_invoices_count,
     }
 
     recent_audit = (
@@ -84,6 +101,16 @@ async def dashboard(request: Request, db: Session = Depends(get_db_session)):
         .all()
     )
 
+    # Overdue invoices for dashboard alert
+    overdue_invs = (
+        db.query(Invoice)
+        .filter(Invoice.status == InvoiceStatus.OVERDUE)
+        .order_by(Invoice.date_due)
+        .all()
+    )
+    for inv in overdue_invs:
+        inv.days_overdue = (date.today() - inv.date_due).days if inv.date_due else 0
+
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "recent_docs": recent_docs,
@@ -91,6 +118,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db_session)):
         "entities": entities,
         "stats": stats,
         "recent_audit": recent_audit,
+        "overdue_invoices": overdue_invs,
     })
 
 
@@ -496,6 +524,289 @@ async def audit_log(request: Request, db: Session = Depends(get_db_session)):
         "request": request,
         "entries": entries,
     })
+
+
+# === Invoices ===
+
+@app.get("/invoices", response_class=HTMLResponse)
+async def invoices_list(request: Request, db: Session = Depends(get_db_session)):
+    """Invoice list view."""
+    invoices = (
+        db.query(Invoice)
+        .order_by(Invoice.created_at.desc())
+        .limit(100)
+        .all()
+    )
+
+    # Attach entity names
+    entity_cache = {}
+    for inv in invoices:
+        if inv.entity_id not in entity_cache:
+            entity = db.get(Entity, inv.entity_id)
+            entity_cache[inv.entity_id] = entity.name if entity else "—"
+        inv.entity_name = entity_cache[inv.entity_id]
+
+    return templates.TemplateResponse("invoices.html", {
+        "request": request,
+        "invoices": invoices,
+    })
+
+
+@app.get("/invoices/create", response_class=HTMLResponse)
+async def create_invoice_form(request: Request, db: Session = Depends(get_db_session)):
+    """Invoice creation form."""
+    entities = db.query(Entity).filter(Entity.active == True).all()
+    # Only farm entities for now
+    farm_entities = [e for e in entities if e.entity_type.value == "row_crop_farm"]
+    return templates.TemplateResponse("create_invoice.html", {
+        "request": request,
+        "entities": farm_entities,
+    })
+
+
+@app.post("/invoices/create")
+async def create_invoice_submit(
+    request: Request,
+    db: Session = Depends(get_db_session),
+    entity_id: int = Form(...),
+    customer_name: str = Form(...),
+    customer_address: str = Form(""),
+    date_due: str = Form(...),
+    notes: str = Form(""),
+):
+    """Save a new invoice."""
+    invoice_generator = getattr(request.app.state, "invoice_generator", None)
+    if not invoice_generator:
+        return HTMLResponse("Invoice generator not configured", status_code=500)
+
+    # Parse line items from form data
+    form_data = await request.form()
+    line_items = []
+    i = 0
+    while True:
+        desc_key = f"item_description_{i}"
+        qty_key = f"item_quantity_{i}"
+        price_key = f"item_unit_price_{i}"
+        if desc_key not in form_data:
+            break
+        desc = form_data[desc_key]
+        qty = form_data.get(qty_key, "1")
+        price = form_data.get(price_key, "0")
+        if desc.strip():
+            line_items.append({
+                "description": desc.strip(),
+                "quantity": float(qty) if qty else 1,
+                "unit_price": float(price) if price else 0,
+            })
+        i += 1
+
+    if not line_items:
+        return HTMLResponse("At least one line item is required", status_code=400)
+
+    try:
+        due = datetime.strptime(date_due, "%Y-%m-%d").date()
+    except ValueError:
+        return HTMLResponse("Invalid due date format", status_code=400)
+
+    invoice_id = invoice_generator.create_invoice(
+        entity_id=entity_id,
+        customer_name=customer_name,
+        customer_address=customer_address,
+        date_due=due,
+        line_items=line_items,
+        notes=notes,
+    )
+
+    return RedirectResponse(url=f"/invoices/{invoice_id}", status_code=303)
+
+
+@app.get("/invoices/{invoice_id}", response_class=HTMLResponse)
+async def invoice_detail(invoice_id: int, request: Request, db: Session = Depends(get_db_session)):
+    """Invoice detail view."""
+    invoice_generator = getattr(request.app.state, "invoice_generator", None)
+    if not invoice_generator:
+        return HTMLResponse("Invoice generator not configured", status_code=500)
+
+    inv_data = invoice_generator.get_invoice(invoice_id)
+    if not inv_data:
+        return HTMLResponse("Invoice not found", status_code=404)
+
+    return templates.TemplateResponse("invoice_detail.html", {
+        "request": request,
+        "inv": inv_data,
+    })
+
+
+@app.get("/invoices/{invoice_id}/edit", response_class=HTMLResponse)
+async def edit_invoice_form(invoice_id: int, request: Request, db: Session = Depends(get_db_session)):
+    """Edit form for DRAFT invoices."""
+    invoice_generator = getattr(request.app.state, "invoice_generator", None)
+    if not invoice_generator:
+        return HTMLResponse("Invoice generator not configured", status_code=500)
+
+    inv_data = invoice_generator.get_invoice(invoice_id)
+    if not inv_data:
+        return HTMLResponse("Invoice not found", status_code=404)
+    if inv_data["status"] != "draft":
+        return HTMLResponse("Can only edit DRAFT invoices", status_code=400)
+
+    entities = db.query(Entity).filter(Entity.active == True).all()
+    farm_entities = [e for e in entities if e.entity_type.value == "row_crop_farm"]
+
+    return templates.TemplateResponse("edit_invoice.html", {
+        "request": request,
+        "inv": inv_data,
+        "entities": farm_entities,
+    })
+
+
+@app.post("/invoices/{invoice_id}/edit")
+async def edit_invoice_submit(
+    invoice_id: int,
+    request: Request,
+    customer_name: str = Form(...),
+    customer_address: str = Form(""),
+    date_due: str = Form(...),
+    notes: str = Form(""),
+):
+    """Save edits to a DRAFT invoice."""
+    invoice_generator = getattr(request.app.state, "invoice_generator", None)
+    if not invoice_generator:
+        return HTMLResponse("Invoice generator not configured", status_code=500)
+
+    # Parse line items from form data
+    form_data = await request.form()
+    line_items = []
+    i = 0
+    while True:
+        desc_key = f"item_description_{i}"
+        qty_key = f"item_quantity_{i}"
+        price_key = f"item_unit_price_{i}"
+        if desc_key not in form_data:
+            break
+        desc = form_data[desc_key]
+        qty = form_data.get(qty_key, "1")
+        price = form_data.get(price_key, "0")
+        if desc.strip():
+            line_items.append({
+                "description": desc.strip(),
+                "quantity": float(qty) if qty else 1,
+                "unit_price": float(price) if price else 0,
+            })
+        i += 1
+
+    try:
+        due = datetime.strptime(date_due, "%Y-%m-%d").date()
+    except ValueError:
+        return HTMLResponse("Invalid due date format", status_code=400)
+
+    try:
+        invoice_generator.update_invoice(
+            invoice_id,
+            customer_name=customer_name,
+            customer_address=customer_address,
+            date_due=due,
+            line_items=line_items,
+            notes=notes,
+        )
+    except ValueError as e:
+        return HTMLResponse(str(e), status_code=400)
+
+    return RedirectResponse(url=f"/invoices/{invoice_id}", status_code=303)
+
+
+@app.get("/invoices/{invoice_id}/pdf")
+async def invoice_pdf(invoice_id: int, request: Request):
+    """Download/regenerate invoice PDF."""
+    invoice_generator = getattr(request.app.state, "invoice_generator", None)
+    if not invoice_generator:
+        return HTMLResponse("Invoice generator not configured", status_code=500)
+
+    try:
+        pdf_path = invoice_generator.generate_pdf(invoice_id)
+    except ValueError as e:
+        return HTMLResponse(str(e), status_code=404)
+
+    return FileResponse(
+        path=pdf_path,
+        filename=Path(pdf_path).name,
+        media_type="application/pdf",
+    )
+
+
+@app.post("/invoices/{invoice_id}/send")
+async def invoice_send(invoice_id: int, request: Request):
+    """Mark invoice as SENT."""
+    invoice_generator = getattr(request.app.state, "invoice_generator", None)
+    if not invoice_generator:
+        return HTMLResponse("Invoice generator not configured", status_code=500)
+
+    try:
+        invoice_generator.mark_sent(invoice_id)
+    except ValueError as e:
+        return HTMLResponse(str(e), status_code=400)
+
+    return RedirectResponse(url=f"/invoices/{invoice_id}", status_code=303)
+
+
+@app.post("/invoices/{invoice_id}/payment")
+async def invoice_payment(
+    invoice_id: int,
+    request: Request,
+    payment_amount: float = Form(...),
+    payment_date: str = Form(""),
+    payment_notes: str = Form(""),
+):
+    """Record a payment against an invoice."""
+    invoice_generator = getattr(request.app.state, "invoice_generator", None)
+    if not invoice_generator:
+        return HTMLResponse("Invoice generator not configured", status_code=500)
+
+    try:
+        p_date = datetime.strptime(payment_date, "%Y-%m-%d").date() if payment_date else None
+    except ValueError:
+        p_date = None
+
+    try:
+        invoice_generator.record_payment(invoice_id, payment_amount, p_date, payment_notes)
+    except ValueError as e:
+        return HTMLResponse(str(e), status_code=400)
+
+    return RedirectResponse(url=f"/invoices/{invoice_id}", status_code=303)
+
+
+@app.post("/invoices/{invoice_id}/void")
+async def invoice_void(invoice_id: int, request: Request, reason: str = Form("")):
+    """Void an invoice."""
+    invoice_generator = getattr(request.app.state, "invoice_generator", None)
+    if not invoice_generator:
+        return HTMLResponse("Invoice generator not configured", status_code=500)
+
+    try:
+        invoice_generator.void_invoice(invoice_id, reason)
+    except ValueError as e:
+        return HTMLResponse(str(e), status_code=400)
+
+    return RedirectResponse(url=f"/invoices/{invoice_id}", status_code=303)
+
+
+@app.post("/invoices/{invoice_id}/reminder")
+async def invoice_reminder(invoice_id: int, request: Request):
+    """Generate a reminder PDF for an overdue invoice."""
+    invoice_generator = getattr(request.app.state, "invoice_generator", None)
+    if not invoice_generator:
+        return HTMLResponse("Invoice generator not configured", status_code=500)
+
+    try:
+        pdf_path = invoice_generator.generate_reminder_pdf(invoice_id)
+    except ValueError as e:
+        return HTMLResponse(str(e), status_code=400)
+
+    return FileResponse(
+        path=pdf_path,
+        filename=Path(pdf_path).name,
+        media_type="application/pdf",
+    )
 
 
 # === API Endpoints (for HTMX partial updates) ===
