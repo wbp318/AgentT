@@ -1,5 +1,7 @@
 # AgentT
 
+> **Why "Agent T"?** — Named after Theresa, known to everyone as "T," who has been the backbone of our farm office for 27 years. After nearly three decades of keeping the books straight, wrangling paperwork, and holding everything together, it's time for her well-earned retirement. This agent is built to carry on the work she made look easy. Thanks, T.
+
 Farm office automation agent for multi-entity agricultural operations. Automates document scanning, OCR, classification, QuickBooks bookkeeping, invoicing, and FSA/USDA paperwork.
 
 ## What It Does
@@ -68,10 +70,10 @@ Every document, transaction, and invoice is tagged to an entity. Configure entit
 See [docs/PLAN.md](docs/PLAN.md) for the full implementation plan.
 
 - [x] **Phase 1**: Foundation + scanner/OCR pipeline
-- [ ] **Phase 2**: QuickBooks IIF file generation + approval workflow
-- [ ] **Phase 3**: Billing & invoice generation
-- [ ] **Phase 4**: Dashboard polish + task scheduler
-- [ ] **Phase 5**: FSA/USDA crop reporting module
+- [x] **Phase 2**: QuickBooks IIF file generation + approval workflow
+- [x] **Phase 3**: Billing & invoice generation
+- [x] **Phase 4**: Dashboard polish + task scheduler
+- [ ] **Phase 5**: FSA/USDA crop reporting module (deferred)
 - [ ] **Phase 6**: Live QB sync via Conductor.is
 
 ## License
