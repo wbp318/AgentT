@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AgentT is a farm office automation agent for a multi-entity agricultural operation (two Louisiana row crop farms + a Georgia real estate operation). It runs locally on the office PC alongside QuickBooks Desktop. The agent watches a scanner output folder, OCRs documents, classifies and extracts data via Claude API, auto-files them, and generates QuickBooks IIF import files with an approval workflow.
+AgentT is a farm office automation agent for a multi-entity agricultural operation (two Louisiana row crop farms + a Georgia real estate operation). It runs locally on the office PC alongside QuickBooks Desktop. The agent watches a scanner output folder, OCRs documents, classifies and extracts data via Claude API, auto-files them, generates QuickBooks IIF import files with an approval workflow, and produces outbound invoices with PDF generation and payment tracking.
 
 ## Commands
 
@@ -13,10 +13,10 @@ python main.py init-db          # Create tables + seed entities + vendor mapping
 python main.py run              # Start scanner watcher + web dashboard
 python main.py web              # Web dashboard only (no scanner)
 python main.py scan             # Scanner only (no dashboard)
-python main.py status           # Show entity/document/transaction/approval counts
+python main.py status           # Show entity/document/transaction/approval/invoice counts
 python main.py --log-level DEBUG run  # Verbose logging
 
-pytest tests/                   # Run all tests (27 tests)
+pytest tests/                   # Run all tests (50 tests)
 pytest tests/test_iif_generator.py -v          # Run one test file
 pytest tests/test_approval.py -k "test_cannot" # Run a single test by name
 ```
@@ -41,6 +41,13 @@ User creates transaction via web UI → APPROVAL_REQUESTED → APPROVAL_DECIDED 
 
 Each event carries a `data` dict with `doc_id`, `file_path`, `filename`, and stage-specific fields. Because the bus is synchronous, all handlers run sequentially in the same thread. Event handlers each open their own `get_session()` — state is **not** shared between handlers. The `doc_id` in event data is the coordination key across stages.
 
+**Phase 3 — Invoicing (user-initiated):**
+```
+User creates invoice via web UI → InvoiceGenerator.create_invoice() → DRAFT
+  → mark_sent() → SENT → record_payment() → PAID
+  → check_overdue() → OVERDUE → generate_reminder_pdf()
+```
+
 ### Module Contract
 
 Every module follows the same interface pattern for the `AgentT` orchestrator (`core/agent.py`):
@@ -61,9 +68,30 @@ Transaction creation is **manual** — user clicks "Create Transaction" on a fil
 6. `IIFGenerator` subscribes to `APPROVAL_DECIDED`, auto-generates IIF file
 7. User downloads IIF, imports into QuickBooks Desktop, marks as synced
 
-Key services are accessed via `request.app.state` in web routes (categorizer, iif_generator, approval_engine, event_bus). These are wired in `main.py` during startup.
+Key services are accessed via `request.app.state` in web routes (categorizer, iif_generator, approval_engine, invoice_generator, event_bus). These are wired in `main.py` during startup.
 
 Each entity has a **separate QB company file** — IIF files go to `data/exports/iif/{entity_slug}/{YYYY-MM}/`.
+
+### Phase 3: Invoice Flow
+
+`modules/billing/invoice_generator.py` — `InvoiceGenerator` follows the module contract. Invoices are created manually via the web UI (farm entities only; GA Real Estate excluded for now).
+
+**Invoice lifecycle:** `DRAFT → SENT → PAID` (or `OVERDUE` if past due, or `VOID` at any non-PAID stage)
+
+Key methods:
+- `create_invoice()` — auto-generates invoice number `{prefix}-{YYYY}-{NNN}`, calculates totals from line items, status=DRAFT
+- `generate_pdf()` / `generate_reminder_pdf()` — renders Jinja2 HTML templates via WeasyPrint, saves to `data/invoices/{entity_slug}/{YYYY}/`
+- `mark_sent()` — DRAFT→SENT transition
+- `record_payment()` — adds to `amount_paid`; auto-sets PAID when `balance_due <= 0`
+- `void_invoice()` — sets VOID (cannot void PAID invoices)
+- `check_overdue()` — queries SENT invoices past `date_due`, flips to OVERDUE
+- `update_invoice()` — edits DRAFT invoices only
+
+**Entity branding:** Each entity has `address`, `phone`, `email`, `invoice_prefix` (and `tax_id`, `logo_path` for future use) stored in the `entities` table and populated from `config/entities.py` during `seed_entities()`. These appear on invoice and reminder PDFs.
+
+**PDF templates:** `modules/billing/templates/invoice.html` (invoice) and `reminder.html` (past due notice). Print-friendly CSS, entity letterhead, line items table. WeasyPrint requires GTK/Pango libraries on Windows.
+
+**Web routes (11):** CRUD for invoices at `/invoices/*` — list, create (GET/POST), detail, edit (GET/POST), PDF download, mark sent, record payment, void, generate reminder. Dashboard shows invoice stats and overdue alerts with reminder buttons.
 
 ### IIF File Format
 
@@ -81,7 +109,7 @@ Status transitions are strictly forward — no backwards transitions. ERROR is t
 
 ### Multi-Entity Design
 
-Three business entities in `config/entities.py` (generic placeholders; real names are in `fsa_sdrp/`). Every database table that holds business data has an `entity_id` FK. Entity resolution:
+Three business entities in `config/entities.py` (generic placeholders; real names are in `fsa_sdrp/`). Each entity has branding fields (address, phone, email, invoice_prefix) used on invoices and reminder letters. Every database table that holds business data has an `entity_id` FK. Entity resolution:
 1. Keyword matching in `core/entity_context.py` (fast, for obvious cases)
 2. Claude API classification in `modules/scanner/classifier.py` (for ambiguous documents)
 
@@ -111,7 +139,7 @@ SQLite via SQLAlchemy 2.0 with `DeclarativeBase`. Two session patterns:
 
 **Important:** Entity and other ORM objects become detached after `get_session()` closes. Extract scalar data (name, slug, etc.) inside the session block before using outside it.
 
-All models are in `database/models.py` (7 tables, 11 enums). Flexible data uses JSON columns (`extracted_data`, `line_items`, `data_payload`). No migrations yet (uses `create_all()`).
+All models are in `database/models.py` (7 tables, 11 enums). Flexible data uses JSON columns (`extracted_data`, `line_items`, `data_payload`). No formal migrations — uses `create_all()` plus `_add_missing_columns()` in `database/db.py` which auto-adds new model columns to existing SQLite tables via `ALTER TABLE`.
 
 ### Web Dashboard
 
@@ -144,7 +172,8 @@ Modules catch exceptions and emit `ERROR_OCCURRED` events. The agent subscribes 
 - **CLI**: click, rich
 - **Config**: python-dotenv
 - **Testing**: pytest, pytest-asyncio
-- **Installed but not yet used**: APScheduler (Phase 4), weasyprint (Phase 3), pandas
+- **PDF generation**: weasyprint (requires GTK/Pango on Windows)
+- **Installed but not yet used**: APScheduler (Phase 4), pandas
 
 ## Configuration
 
@@ -154,9 +183,9 @@ All config loads from `.env` via `config/settings.py`. Key variables:
 - `CLASSIFICATION_MODEL` / `EXTRACTION_MODEL` / `CATEGORIZATION_MODEL` — Claude model IDs
 - `TESSERACT_CMD` — path to Tesseract binary (leave empty to use PATH)
 
-`settings.py` auto-creates all data directories on import (including `IIF_OUTPUT_DIR`).
+`settings.py` auto-creates all data directories on import (including `IIF_OUTPUT_DIR`, `INVOICES_DIR`).
 
-Entity definitions (names, types, states, keywords, crops) are in `config/entities.py`, along with Schedule F expense/income categories (24 expense + 10 income).
+Entity definitions (names, types, states, keywords, crops, branding, invoice prefix) are in `config/entities.py`, along with Schedule F expense/income categories (24 expense + 10 income).
 
 ## Testing
 
@@ -169,6 +198,8 @@ with patch("module.path.get_session") as mock_gs:
 
 `datetime.utcnow()` deprecation warnings from SQLAlchemy model defaults are known and non-critical.
 
+WeasyPrint tests mock `sys.modules["weasyprint"]` to avoid GTK/Pango dependency on Windows. PDF content is not tested; only that the generator calls WeasyPrint and updates DB records correctly.
+
 ## Related Projects
 
 - `../tax_assistant/` — Schedule F expense/income categories in `config/tax_constants.py`
@@ -177,8 +208,7 @@ with patch("module.path.get_session") as mock_gs:
 
 ## Planned Phases
 
-Phases 1 and 2 are complete. Upcoming:
-- **Phase 3**: Billing & invoice generation
+Phases 1, 2, and 3 are complete. Upcoming:
 - **Phase 4**: Dashboard polish + APScheduler task automation
 - **Phase 5**: FSA/USDA crop reporting module
 - **Phase 6**: Live QB sync via Conductor.is
